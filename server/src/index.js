@@ -10,7 +10,8 @@ const app = express();
 const port = Number(process.env.PORT || 4000);
 fs.mkdirSync('server/data/uploads', { recursive: true });
 const upload = multer({ dest: 'server/data/uploads/', limits: { fileSize: 25 * 1024 * 1024 } });
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }));
+const allowedOrigins = new Set([process.env.CLIENT_ORIGIN || 'http://localhost:5173', 'http://127.0.0.1:5173']);
+app.use(cors({ origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)) }));
 app.use(express.json({ limit: '2mb' }));
 
 const publicUser = (user) => ({ id: user.id, displayName: user.display_name, email: user.email, isGuest: Boolean(user.is_guest) });
