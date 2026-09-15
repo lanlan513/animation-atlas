@@ -25,7 +25,7 @@ function requireUser(req, res, next) {
 }
 
 function requireProjectOwner(req, res, next) {
-  const project = db.prepare('SELECT p.*, c.slug AS category_slug, c.name AS category_name, c.accent, c.glyph FROM projects p JOIN categories c ON c.id = p.category_id WHERE p.id = ? AND p.owner_id = ?').get(req.params.projectId, req.user.id);
+  const project = db.prepare('SELECT p.*, c.slug AS category_slug, c.name AS category_name, c.kind AS category_kind, c.accent, c.glyph FROM projects p JOIN categories c ON c.id = p.category_id WHERE p.id = ? AND p.owner_id = ?').get(req.params.projectId, req.user.id);
   if (!project) return res.status(404).json({ error: '找不到这个项目，或你没有访问权限。' });
   req.project = project;
   next();
@@ -63,7 +63,7 @@ app.get('/api/categories', (_req, res) => res.json({ categories: db.prepare('SEL
 
 app.get('/api/projects', requireUser, (req, res) => {
   const projects = db.prepare(`SELECT p.id, p.name, p.description, p.status, p.created_at AS createdAt, p.updated_at AS updatedAt,
-      c.slug AS categorySlug, c.name AS categoryName, c.accent, c.glyph,
+      c.slug AS categorySlug, c.name AS categoryName, c.kind AS categoryKind, c.accent, c.glyph,
       d.revision AS draftRevision, d.updated_at AS draftUpdatedAt
     FROM projects p JOIN categories c ON c.id = p.category_id LEFT JOIN drafts d ON d.project_id = p.id
     WHERE p.owner_id = ? ORDER BY p.updated_at DESC`).all(req.user.id);
@@ -82,7 +82,7 @@ app.post('/api/projects', requireUser, (req, res) => {
     db.prepare('INSERT INTO drafts (id, project_id, content) VALUES (?, ?, ?)').run(draftId, id, JSON.stringify({ nodes: [], settings: {} }));
     db.exec('COMMIT');
   } catch (error) { db.exec('ROLLBACK'); throw error; }
-  res.status(201).json({ project: db.prepare(`SELECT p.id, p.name, p.description, p.status, p.created_at AS createdAt, p.updated_at AS updatedAt, c.slug AS categorySlug, c.name AS categoryName, c.accent, c.glyph, 1 AS draftRevision FROM projects p JOIN categories c ON c.id = p.category_id WHERE p.id = ?`).get(id) });
+  res.status(201).json({ project: db.prepare(`SELECT p.id, p.name, p.description, p.status, p.created_at AS createdAt, p.updated_at AS updatedAt, c.slug AS categorySlug, c.name AS categoryName, c.kind AS categoryKind, c.accent, c.glyph, 1 AS draftRevision FROM projects p JOIN categories c ON c.id = p.category_id WHERE p.id = ?`).get(id) });
 });
 
 app.get('/api/projects/:projectId', requireUser, requireProjectOwner, (req, res) => {
