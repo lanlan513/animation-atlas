@@ -77,12 +77,12 @@ db.exec(`
 `);
 
 const labs = [
-  ['sakuga-spark', 'Sakuga Spark', 'High-energy keyframe studies and impact timing.', '#f2674a', '✦', 1],
-  ['panel-punch', 'Panel Punch', 'Comic rhythm, bold cuts, and graphic transitions.', '#f4b942', '▦', 2],
-  ['frame-mold', 'FrameMold', 'Shape language experiments built one frame at a time.', '#8bd5ca', '◈', 3],
-  ['pixelpulse', 'PixelPulse', 'Tiny pixels, huge beats, and crisp loop logic.', '#74a9ff', '▥', 4],
-  ['inkdrift', 'InkDrift', 'Organic linework that moves like it is breathing.', '#c69cff', '〰', 5],
-  ['motion-rift', 'Motion Rift', 'Stretch, smear, and bend the space between poses.', '#ff7eb6', '◒', 6]
+  ['sakuga-spark', '作画火花', '高能关键帧与冲击节奏实验。', '#f2674a', '✦', 1],
+  ['panel-punch', '分镜重击', '漫画节奏、强切与图形转场实验。', '#f4b942', '▦', 2],
+  ['frame-mold', '帧塑', '一帧一帧建立形状语言。', '#8bd5ca', '◈', 3],
+  ['pixelpulse', '像素脉冲', '微小像素、强烈节拍与清晰循环。', '#74a9ff', '▥', 4],
+  ['inkdrift', '墨迹漂移', '像呼吸一样流动的有机线条。', '#c69cff', '〰', 5],
+  ['motion-rift', '动势裂隙', '拉伸、拖影与姿态之间的空间弯折。', '#ff7eb6', '◒', 6]
 ];
 
 const count = db.prepare('SELECT COUNT(*) AS count FROM categories').get().count;
@@ -92,5 +92,8 @@ if (count === 0) {
   try { labs.forEach((lab) => insert.run(crypto.randomUUID(), ...lab)); db.exec('COMMIT'); }
   catch (error) { db.exec('ROLLBACK'); throw error; }
 }
+
+const updateLab = db.prepare('UPDATE categories SET name = ?, description = ?, accent = ?, glyph = ?, sort_order = ? WHERE slug = ?');
+for (const [slug, name, description, accent, glyph, sortOrder] of labs) updateLab.run(name, description, accent, glyph, sortOrder, slug);
 
 export default db;
