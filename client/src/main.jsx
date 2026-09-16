@@ -1,95 +1,472 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowUpRight, Check, CircleAlert, Clock3, Cloud, Command, Film, LoaderCircle, Plus, RefreshCw, Save, Sparkles, Upload, UserRound, X } from 'lucide-react';
+import {
+  AlertTriangle, Check, ChevronDown, Cloud, Download, FilePlus2, GripVertical,
+  Layers, LoaderCircle, Lock, Plus, Save, Shuffle, Sparkles, Trash2, X
+} from 'lucide-react';
+import PosterCanvas, { serializeCurrentSvg } from './components/PosterCanvas.jsx';
+import ImpactControls, { LayerPanel, Slider } from './components/Controls.jsx';
+import ImpactArt, { ART_HEIGHT, ART_WIDTH } from './components/ImpactArt.jsx';
+import { createPoster, getGuest, listPosters, loadPoster, savePoster } from './api.js';
+import {
+  PANEL_LIMITS, createImpact, createImpactLayer, createPoster as defaultPoster,
+  randomSeed, sanitizeComicText, sanitizeName, sanitizePoster
+} from '../../shared/panel-punch-core.js';
 import './styles.css';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
-const labFallback = [
-  { slug: 'sakuga-spark', name: 'Sakuga Spark', kind: '日漫', description: '高能关键帧与冲击节奏实验。', accent: '#f2674a', glyph: '✦' },
-  { slug: 'panel-punch', name: 'Panel Punch', kind: '美漫', description: '漫画节奏、强切与图形转场实验。', accent: '#f4b942', glyph: '▦' },
-  { slug: 'frame-mold', name: 'FrameMold', kind: '定格动画', description: '一帧一帧建立形状语言。', accent: '#8bd5ca', glyph: '◈' },
-  { slug: 'pixelpulse', name: 'PixelPulse', kind: '像素动画', description: '微小像素、强烈节拍与清晰循环。', accent: '#74a9ff', glyph: '▥' },
-  { slug: 'inkdrift', name: 'InkDrift', kind: '水墨动画', description: '像呼吸一样流动的有机线条。', accent: '#c69cff', glyph: '〰' },
-  { slug: 'motion-rift', name: 'Motion Rift', kind: '实验动画', description: '拉伸、拖影与姿态之间的空间弯折。', accent: '#ff7eb6', glyph: '◒' }
-];
+const PRESET_WORDS = ['BAM', 'POW', 'CRASH', 'KAPOW', 'ZAP', 'WHAM'];
 
-async function request(path, options = {}) {
-  const response = await fetch(`${API}${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || '请求失败，请稍后重试。');
-  return body;
+function detectAdvancedFilters() {
+  if (typeof window === 'undefined') return true;
+  const ua = window.navigator.userAgent;
+  const isSafari = /^((?!chrome|android|crios|fxios).)*safari/i.test(ua);
+  if (!isSafari) return true;
+  const version = Number(ua.match(/Version\/(\d+)/)?.[1] || 0);
+  // feTurbulence/feDisplacementMap are historically unreliable on Safari; the
+  // offset/duplicate fallback still communicates hand-printed roughness.
+  return version >= 17 && typeof SVGElement !== 'undefined' && 'feTurbulence' in window;
 }
 
 function App() {
   const [user, setUser] = useState(null);
-  const [labs, setLabs] = useState(labFallback);
-  const [projects, setProjects] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [draft, setDraft] = useState({ nodes: [], settings: {} });
-  const [loadState, setLoadState] = useState('loading');
+  const [bootState, setBootState] = useState('loading');
   const [error, setError] = useState('');
+  const [posters, setPosters] = useState([]);
+  const [posterId, setPosterId] = useState(null);
+  const [poster, setPoster] = useState(null);
+  const [revision, setRevision] = useState(0);
   const [saveState, setSaveState] = useState('idle');
-  const [showCreate, setShowCreate] = useState(false);
-  const [createLab, setCreateLab] = useState(null);
-  const [showAccount, setShowAccount] = useState(false);
+  const [workshopText, setWorkshopText] = useState('POW');
+  const [advancedFilters, setAdvancedFilters] = useState(true);
+  const frameRef = useRef(null);
 
-  const run = useCallback(async (fn) => { setError(''); try { return await fn(); } catch (err) { setError(err.message); throw err; } }, []);
+  const timerRef = useRef(null);
+  const saveQueueRef = useRef(Promise.resolve());
+  const latestRef = useRef(null);
+  const pendingRef = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoadState('loading');
-    try {
-      let stored = localStorage.getItem('animation-atlas-user');
-      let current;
-      if (stored) { current = JSON.parse(stored); await request('/auth/me', { headers: { 'x-user-id': current.id } }); }
-      else { const result = await request('/auth/guest', { method: 'POST' }); current = result.user; localStorage.setItem('animation-atlas-user', JSON.stringify(current)); }
-      setUser(current);
-      const [categoryResult, projectResult] = await Promise.all([request('/categories'), request('/projects', { headers: { 'x-user-id': current.id } })]);
-      setLabs(categoryResult.categories); setProjects(projectResult.projects); setLoadState('ready');
-    } catch (err) {
-      localStorage.removeItem('animation-atlas-user');
-      setError(err.message); setLoadState('error');
-    }
+  latestRef.current = poster;
+
+  useEffect(() => {
+    setAdvancedFilters(detectAdvancedFilters());
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const flashError = useCallback((message) => {
+    setError(message);
+    window.clearTimeout(flashError.timer);
+    flashError.timer = window.setTimeout(() => setError(''), 4200);
+  }, []);
 
-  const chooseProject = useCallback(async (project) => {
-    setSelected(project); setSaveState('idle');
-    try { const result = await run(() => request(`/projects/${project.id}`, { headers: { 'x-user-id': user.id } })); setDraft(result.project.draft?.content || { nodes: [], settings: {} }); }
-    catch { setDraft({ nodes: [], settings: {} }); }
-  }, [run, user]);
+  const applyServerPoster = useCallback((serverPoster, serverRevision) => {
+    const clean = sanitizePoster(serverPoster);
+    setPoster(clean);
+    setRevision(serverRevision || 0);
+    pendingRef.current = false;
+    return clean;
+  }, []);
 
-  const createProject = async ({ name, categorySlug }) => {
-    const result = await run(() => request('/projects', { method: 'POST', headers: { 'x-user-id': user.id }, body: JSON.stringify({ name, categorySlug }) }));
-    setProjects((items) => [result.project, ...items]); setShowCreate(false); setCreateLab(null); chooseProject(result.project);
+  useEffect(() => {
+    let alive = true;
+    getGuest()
+      .then((guest) => listPosters().then((items) => ({ guest, items })))
+      .then(async ({ guest, items }) => {
+        if (!alive) return;
+        setUser(guest);
+        setPosters(items);
+        if (items[0]) {
+          const result = await loadPoster(items[0].id);
+          if (!alive) return;
+          setPosterId(items[0].id);
+          applyServerPoster(result.poster, result.revision);
+        } else {
+          const result = await createPoster(defaultPoster({ name: '第一页动作海报' }));
+          if (!alive) return;
+          setPosters([result.record]);
+          setPosterId(result.record.id);
+          applyServerPoster(result.poster, result.record.revision);
+        }
+        setBootState('ready');
+      })
+      .catch((err) => {
+        if (!alive) return;
+        // Backend may still be starting: keep a deterministic local document
+        // instead of blocking the whole editor.
+        const local = sanitizePoster(defaultPoster({ name: '离线动作海报' }));
+        setPoster(local);
+        setPosterId(null);
+        setRevision(0);
+        setBootState('ready');
+        flashError(`${err.message} 已进入离线草稿，恢复后端后请刷新。`);
+      });
+    return () => { alive = false; };
+  }, [applyServerPoster, flashError]);
+
+  const flushSave = useCallback(async (useKeepalive = false) => {
+    const current = latestRef.current;
+    if (!posterId || !current || !pendingRef.current) return;
+    window.clearTimeout(timerRef.current);
+    setSaveState('saving');
+    const payload = sanitizePoster({ ...current, updatedAt: new Date().toISOString() });
+    pendingRef.current = false;
+
+    try {
+      // keepalive lets the final flush survive tab close / page refresh while
+      // still carrying the x-user-id auth header (sendBeacon cannot).
+      const result = await savePoster(posterId, payload, revision, { keepalive: useKeepalive });
+      setRevision(result.revision);
+      setSaveState('saved');
+      setPosters((items) => items.map((item) => item.id === posterId
+        ? { ...item, name: result.poster.name, width: result.poster.width, height: result.poster.height, revision: result.revision, updatedAt: result.updatedAt }
+        : item));
+    } catch (err) {
+      pendingRef.current = true;
+      setSaveState('error');
+      if (err.status === 409 && err.body?.poster) {
+        applyServerPoster(err.body.poster, err.body.revision);
+        flashError('检测到其他标签页更新，服务器版本已载入，未合并本次冲突操作。');
+      } else {
+        flashError(err.message);
+      }
+    }
+  }, [applyServerPoster, flashError, posterId, revision]);
+
+  const queueSave = useCallback(() => {
+    if (!posterId) { setSaveState('idle'); return; }
+    pendingRef.current = true;
+    setSaveState('queued');
+    window.clearTimeout(timerRef.current);
+    // Frequent mousemoves only reset this timer; requests are coalesced and the
+    // prior request must finish before a newer revision is sent.
+    timerRef.current = window.setTimeout(() => {
+      saveQueueRef.current = saveQueueRef.current.then(() => flushSave()).catch(() => {});
+    }, 420);
+  }, [flushSave, posterId]);
+
+  useEffect(() => () => {
+    window.clearTimeout(timerRef.current);
+    flushSave(true);
+  }, [flushSave]);
+
+  useEffect(() => {
+    const hidden = () => { if (document.visibilityState === 'hidden') flushSave(true); };
+    window.addEventListener('beforeunload', () => flushSave(true));
+    document.addEventListener('visibilitychange', hidden);
+    return () => document.removeEventListener('visibilitychange', hidden);
+  }, [flushSave]);
+
+  const updatePoster = useCallback((producer, shouldSave = true) => {
+    setPoster((current) => {
+      const next = sanitizePoster(typeof producer === 'function' ? producer(current) : producer);
+      return next;
+    });
+    if (shouldSave) queueSave();
+  }, [queueSave]);
+
+  const activeLayer = useMemo(
+    () => poster?.layers.find((layer) => layer.id === poster.activeLayerId) || poster?.layers.find((layer) => layer.kind === 'impact'),
+    [poster]
+  );
+
+  const addWorkshopToPoster = useCallback((overrides, point = null) => {
+    if (!poster) return;
+    const impact = createImpact({ text: workshopText, seed: randomSeed(), ...overrides });
+    const layer = createImpactLayer({
+      impact,
+      name: `${impact.text} ${poster.layers.filter((item) => item.kind === 'impact').length + 1}`,
+      x: point ? point.x : Math.round(poster.width / 2),
+      y: point ? point.y : Math.round(poster.height / 2),
+      scale: 0.82
+    });
+    updatePoster((current) => sanitizePoster({
+      ...current,
+      activeLayerId: layer.id,
+      layers: [...current.layers, layer]
+    }));
+  }, [poster, updatePoster, workshopText]);
+
+  const patchActiveImpact = useCallback((impactPatch) => {
+    updatePoster((current) => ({
+      ...current,
+      layers: current.layers.map((layer) => layer.id === current.activeLayerId && layer.kind === 'impact'
+        ? { ...layer, name: layer.name === layer.impact.text ? impactPatch.text : layer.name, impact: { ...layer.impact, ...impactPatch } }
+        : layer)
+    }));
+  }, [updatePoster]);
+
+  const duplicateLayer = useCallback(() => {
+    if (!activeLayer) return;
+    const copy = createImpactLayer({
+      ...activeLayer,
+      id: undefined,
+      impact: { ...activeLayer.impact },
+      x: activeLayer.x + 34,
+      y: activeLayer.y - 28,
+      name: `${activeLayer.impact.text} 副本`,
+      locked: false
+    });
+    updatePoster((current) => ({ ...current, activeLayerId: copy.id, layers: [...current.layers, copy] }));
+  }, [activeLayer, updatePoster]);
+
+  const deleteLayer = useCallback((id = activeLayer?.id) => {
+    updatePoster((current) => {
+      const layers = current.layers.filter((layer) => layer.kind === 'background' || layer.id !== id);
+      const activeLayerId = current.activeLayerId === id ? layers.find((layer) => layer.kind === 'impact')?.id : current.activeLayerId;
+      return { ...current, layers, activeLayerId };
+    });
+  }, [activeLayer?.id, updatePoster]);
+
+  const moveLayerOrder = useCallback((id, direction) => {
+    updatePoster((current) => {
+      const index = current.layers.findIndex((layer) => layer.id === id);
+      const target = index + direction;
+      if (index < 0 || target <= 0 || target >= current.layers.length) return current;
+      const layers = [...current.layers];
+      const [layer] = layers.splice(index, 1);
+      layers.splice(target, 0, layer);
+      return { ...current, layers };
+    });
+  }, [updatePoster]);
+
+  const moveLayerPosition = useCallback((id, x, y) => {
+    updatePoster((current) => ({
+      ...current,
+      layers: current.layers.map((layer) => layer.id === id ? { ...layer, x, y } : layer)
+    }));
+  }, [updatePoster]);
+
+  const selectLayer = useCallback((id) => {
+    updatePoster((current) => ({ ...current, activeLayerId: id }), false);
+  }, [updatePoster]);
+
+  const toggleLayer = useCallback((key, id) => {
+    updatePoster((current) => ({
+      ...current,
+      layers: current.layers.map((layer) => layer.id === id ? { ...layer, [key]: !layer[key] } : layer)
+    }));
+  }, [updatePoster]);
+
+  const renameLayer = useCallback((id, name) => {
+    updatePoster((current) => ({
+      ...current,
+      layers: current.layers.map((layer) => layer.id === id ? { ...layer, name: sanitizeName(name) } : layer)
+    }));
+  }, [updatePoster]);
+
+  const newPoster = async () => {
+    await flushSave();
+    const result = await createPoster(defaultPoster({ name: `动作海报 ${posters.length + 1}` }));
+    setPosters((items) => [result.record, ...items]);
+    setPosterId(result.record.id);
+    applyServerPoster(result.poster, result.record.revision);
   };
 
-  const autosaveTimer = useRef(null);
-  const updateDraft = (next) => {
-    setDraft(next); setSaveState('saving'); clearTimeout(autosaveTimer.current);
-    autosaveTimer.current = setTimeout(async () => {
-      if (!selected) return;
-      try { const result = await request(`/projects/${selected.id}/drafts`, { method: 'PUT', headers: { 'x-user-id': user.id }, body: JSON.stringify({ content: next }) }); setSaveState('saved'); setProjects((items) => items.map((p) => p.id === selected.id ? { ...p, updatedAt: result.updatedAt, draftRevision: result.revision } : p)); }
-      catch (err) { setError(err.message); setSaveState('error'); }
-    }, 700);
+  const switchPoster = async (id) => {
+    if (id === posterId) return;
+    await flushSave();
+    const result = await loadPoster(id);
+    setPosterId(id);
+    applyServerPoster(result.poster, result.revision);
   };
 
-  const activeLab = useMemo(() => labs.find((lab) => lab.slug === selected?.categorySlug), [labs, selected]);
+  const exportFile = async (format) => {
+    if (!poster || !frameRef.current) return;
+    const scale = poster.exportConfig.scale;
+    updatePoster((current) => ({
+      ...current,
+      exportConfig: { ...current.exportConfig, format, lastExport: { format, at: new Date().toISOString() } }
+    }), true);
 
-  if (loadState === 'loading') return <div className="screen-state"><LoaderCircle className="spin" size={26} /><span>正在连接 Atlas…</span></div>;
-  if (loadState === 'error') return <div className="screen-state"><CircleAlert size={26} /><span>加载失败</span><button className="button ghost" onClick={load}><RefreshCw size={15} />重试</button></div>;
-  return <div className="app-shell">
-    <header className="topbar"><div className="brand"><div className="brand-mark"><Sparkles size={17} /></div><span>ANIMATION ATLAS</span><em>LAB / 01</em></div><div className="top-actions"><span className="system-status"><span className="status-dot" />系统在线</span><button className="icon-button" title="快捷键"><Command size={17} /></button><button className="profile" onClick={() => setShowAccount(true)}><span className="avatar"><UserRound size={15} /></span>{user?.displayName}<span className="chevron">⌄</span></button></div></header>
-    <main className="content"><section className="intro"><div><p className="eyebrow">OPEN WORKSPACE / 2026</p><h1>动画实验，<span>从一帧开始。</span></h1><p className="lede">六个专注的实验室入口。把灵感变成可以反复推敲的运动。</p></div><button className="button primary" onClick={() => { setCreateLab(null); setShowCreate(true); }}><Plus size={17} />新建项目</button></section>
-      <section className="lab-grid">{labs.map((lab, index) => <article className="lab-card" key={lab.slug} style={{ '--accent': lab.accent }}><div className="lab-topline"><span className="lab-number">0{index + 1}</span><span className="lab-kind">{lab.kind}</span></div><div className="lab-glyph">{lab.glyph}</div><div className="lab-copy"><h2>{lab.name}</h2><p>{lab.description}</p></div><button className="card-arrow" title={`从 ${lab.name} / ${lab.kind} 创建项目`} onClick={() => { setShowCreate(true); setCreateLab(lab.slug); }}><ArrowUpRight size={18} /></button></article>)}</section>
-      <section className="workspace-section"><div className="section-heading"><div><p className="eyebrow">YOUR PROJECTS / {projects.length.toString().padStart(2, '0')}</p><h2>最近的工作</h2></div><span className="section-meta"><Clock3 size={14} />自动保存已开启</span></div>{projects.length === 0 ? <div className="empty-projects"><div className="empty-icon"><Film size={22} /></div><div><h3>你的工作区还很安静</h3><p>选一个实验室，建立第一个可持续迭代的项目。</p></div><button className="button secondary" onClick={() => { setCreateLab(null); setShowCreate(true); }}><Plus size={16} />开始创作</button></div> : <div className="project-list">{projects.map((project) => <button className={`project-row ${selected?.id === project.id ? 'active' : ''}`} key={project.id} onClick={() => chooseProject(project)}><span className="project-accent" style={{ background: project.accent }} /><span className="project-icon" style={{ color: project.accent }}>{project.glyph}</span><span className="project-details"><strong>{project.name}</strong><small>{project.categoryName} · {project.categoryKind || '实验室'} · {project.draftRevision ? `Draft ${String(project.draftRevision).padStart(2, '0')}` : 'Draft'}</small></span><span className="project-time">{formatDate(project.updatedAt)}</span><ArrowUpRight size={16} /></button>)}</div>}</section>
-      {selected && <section className="workspace"><div className="workspace-head"><div><p className="eyebrow">WORKSPACE / {activeLab?.name?.toUpperCase()}</p><h2>{selected.name}</h2><span className="workspace-kind">{activeLab?.kind}</span></div><SaveStatus state={saveState} /></div><div className="canvas-shell"><div className="canvas-toolbar"><span className="tool-label"><span className="tool-mark" style={{ background: activeLab?.accent }} />空白容器</span><span className="tool-note">可插拔工作区 · 即将支持画布、时间轴与节点</span><button className="icon-button" title="上传资源" onClick={() => setError('资源上传 API 已就绪，具体编辑器接入后可从这里导入。')}><Upload size={16} /></button></div><div className="canvas-placeholder"><div className="placeholder-cross"><span /><span /></div><div className="placeholder-copy"><h3>Workspace ready</h3><p>这是 {activeLab?.name} / {activeLab?.kind} 的可插拔工作区。</p><small>先记录想法，下一步再把工具接进来。</small></div><textarea aria-label="实验笔记" value={draft.settings?.note || ''} onChange={(event) => updateDraft({ ...draft, settings: { ...draft.settings, note: event.target.value } })} placeholder="写下一句实验笔记…" /></div></div></section>}
-    </main><footer><span>ATLAS ENGINE v0.1</span><span>本地草稿 · 私有项目</span><span>API / READY</span></footer>{error && <div className="toast error"><CircleAlert size={17} /><span>{error}</span><button onClick={() => setError('')}><X size={16} /></button></div>}{showCreate && <CreateModal labs={labs} initialLab={createLab} onClose={() => { setShowCreate(false); setCreateLab(null); }} onCreate={createProject} />}{showAccount && <AccountModal user={user} onClose={() => setShowAccount(false)} />}</div>;
+    const svgNode = frameRef.current.querySelector('svg');
+    const source = serializeCurrentSvg(svgNode, poster);
+    if (format === 'svg') {
+      downloadBlob(new Blob([source], { type: 'image/svg+xml;charset=utf-8' }), `${sanitizeName(poster.name) || 'panel-punch'}.svg`);
+      return;
+    }
+
+    try {
+      const image = new Image();
+      const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml;charset=utf-8' }));
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = () => reject(new Error('SVG 栅格化失败，请改用 SVG 导出。'));
+        image.src = url;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = poster.width * scale;
+      canvas.height = poster.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((blob) => downloadBlob(blob, `${sanitizeName(poster.name) || 'panel-punch'}.png`), 'image/png');
+    } catch (err) {
+      flashError(err.message);
+    }
+  };
+
+  if (bootState === 'loading') {
+    return <div className="screen-state"><LoaderCircle className="spin" size={28} /><strong>PANEL PUNCH</strong><span>正在还原随机种子与图层关系…</span></div>;
+  }
+
+  const workshopImpact = createImpact({ text: sanitizeComicText(workshopText) || 'POW', seed: 4242 });
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="brand"><div className="brand-mark"><Sparkles size={17} /></div><strong>PANEL PUNCH</strong><span>超级英雄冲击字工坊</span></div>
+        <div className="top-actions">
+          <SaveBadge state={saveState} />
+          <button className="comic-button" onClick={newPoster}><FilePlus2 size={15} />新海报</button>
+        </div>
+      </header>
+
+      <main className="workspace-shell">
+        <aside className="sidebar">
+          <section className="side-block poster-switcher">
+            <div className="side-heading"><span>作品</span><ChevronDown size={14} /></div>
+            {posters.map((item) => (
+              <button key={item.id} className={item.id === posterId ? 'active' : ''} onClick={() => switchPoster(item.id)}>
+                <GripVertical size={13} />
+                <span>{sanitizeName(item.name)}</span>
+                <small>v{String(item.revision || 0).padStart(2, '0')}</small>
+              </button>
+            ))}
+            {!posterId && <button className="active offline"><GripVertical size={13} /><span>离线草稿</span><small>LOCAL</small></button>}
+          </section>
+
+          <section className="side-block workshop" draggable onDragStart={(event) => {
+            event.dataTransfer.setData('application/x-panel-punch', JSON.stringify(workshopImpact));
+            event.dataTransfer.effectAllowed = 'copy';
+          }}>
+            <div className="side-heading"><span>冲击字工坊</span><Shuffle size={14} /></div>
+            <input
+              className="word-input"
+              value={workshopText}
+              maxLength={PANEL_LIMITS.text}
+              onChange={(event) => setWorkshopText(sanitizeComicText(event.target.value))}
+              placeholder="BAM / POW / CRASH"
+            />
+            <div className="preset-row">
+              {PRESET_WORDS.map((word) => <button key={word} onClick={() => setWorkshopText(word)}>{word}</button>)}
+            </div>
+            <div className="mini-art">
+              <svg viewBox={`0 0 ${ART_WIDTH} ${ART_HEIGHT}`}><ImpactArt spec={workshopImpact} filterId="workshop-filter" advancedFilters={advancedFilters} /></svg>
+            </div>
+            <p className="drag-help">拖到海报，或直接添加为新图层。超长字符会在输入、前端状态和后端三处截断。</p>
+            <button className="comic-button wide" onClick={() => addWorkshopToPoster()}><Plus size={16} />添加到动作海报</button>
+          </section>
+
+          <section className="side-block safari-panel">
+            <label>
+              <input type="checkbox" checked={advancedFilters} onChange={(event) => setAdvancedFilters(event.target.checked)} />
+              启用 SVG turbulence 高级滤镜
+            </label>
+            <p>Safari 不稳定时自动关闭，并保留错位/重影兼容效果。</p>
+          </section>
+        </aside>
+
+        <section className="stage-area">
+          <div className="stage-toolbar">
+            <div>
+              <input className="poster-name" value={poster?.name || ''} maxLength={60} onChange={(event) => updatePoster((current) => ({ ...current, name: sanitizeName(event.target.value) }))} />
+              <p>{poster?.width} × {poster?.height} · seed #{poster?.seed} · 所有编辑保存为 SVG 参数而不是位图</p>
+            </div>
+            <div className="export-tools">
+              <select value={poster?.exportConfig.scale || 2} onChange={(event) => updatePoster((current) => ({ ...current, exportConfig: { ...current.exportConfig, scale: Number(event.target.value) } }))}>
+                <option value={1}>1× PNG</option>
+                <option value={2}>2× PNG</option>
+                <option value={3}>3× PNG</option>
+                <option value={4}>4× PNG</option>
+              </select>
+              <button onClick={() => exportFile('svg')}><Download size={15} />SVG</button>
+              <button className="primary" onClick={() => exportFile('png')}><Download size={15} />PNG</button>
+            </div>
+          </div>
+
+          <div className="canvas-and-layers">
+            <div className="canvas-wrap">
+              <PosterCanvas
+                ref={frameRef}
+                poster={poster}
+                selectedId={poster?.activeLayerId}
+                advancedFilters={advancedFilters}
+                onSelect={selectLayer}
+                onMoveLayer={moveLayerPosition}
+                onDropWorkshop={(spec, point) => addWorkshopToPoster(spec, point)}
+              />
+              <div className="canvas-caption"><Layers size={14} />拖放工坊词块；选中图层后可移动。锁定图层不会响应画布拖拽。</div>
+            </div>
+            <aside className="layer-sidebar">
+              <h2><Layers size={16} /> 图层顺序</h2>
+              <LayerPanel
+                poster={poster}
+                selectedId={poster.activeLayerId}
+                onSelect={selectLayer}
+                onMove={moveLayerOrder}
+                onToggleLock={(id) => toggleLayer('locked', id)}
+                onToggleHidden={(id) => toggleLayer('visible', id)}
+                onRename={renameLayer}
+              />
+              {activeLayer?.locked && <div className="locked-note"><Lock size={14} />图层已锁定，仍可在右侧重新编辑参数。</div>}
+            </aside>
+          </div>
+
+          <div className="poster-controls">
+            <Slider label="选中图层缩放" value={Math.round((activeLayer?.scale || 1) * 100) / 100} min={0.2} max={3} step={0.05} onChange={(scale) => updatePoster((current) => ({ ...current, layers: current.layers.map((layer) => layer.id === current.activeLayerId ? { ...layer, scale } : layer) }))} />
+            <Slider label="旋转" value={activeLayer?.rotation || 0} min={-180} max={180} suffix="°" onChange={(rotation) => updatePoster((current) => ({ ...current, layers: current.layers.map((layer) => layer.id === current.activeLayerId ? { ...layer, rotation } : layer) }))} />
+            <Slider label="背景样式种子" value={poster?.seed || 0} min={0} max={999999} onChange={(seed) => updatePoster((current) => ({ ...current, seed }))} />
+          </div>
+        </section>
+
+        <aside className="inspector">
+          {activeLayer?.kind === 'impact' ? (
+            <>
+              <ImpactControls
+                layer={activeLayer}
+                onChange={patchActiveImpact}
+                onDuplicate={duplicateLayer}
+                onDelete={() => deleteLayer(activeLayer.id)}
+                canDelete
+              />
+              <button className="text-button danger-text" onClick={() => deleteLayer(activeLayer.id)}><Trash2 size={14} />删除当前冲击字</button>
+            </>
+          ) : (
+            <div className="control-panel">
+              <div className="control-title"><span>背景层</span></div>
+              <p className="muted">背景默认锁定以避免误拖。可在图层面板隐藏、解锁或排序。</p>
+              <select value={poster?.layers[0]?.background?.type || 'radial'} onChange={(event) => updatePoster((current) => ({ ...current, layers: current.layers.map((layer) => layer.kind === 'background' ? { ...layer, background: { ...layer.background, type: event.target.value } } : layer) }))}>
+                <option value="radial">径向网点纸</option>
+                <option value="speed">Canvas 速度线</option>
+                <option value="halftone">密集半色调</option>
+              </select>
+            </div>
+          )}
+        </aside>
+      </main>
+
+      {error && <div className="toast error"><AlertTriangle size={17} /><span>{error}</span><button onClick={() => setError('')}><X size={16} /></button></div>}
+    </div>
+  );
 }
 
-function SaveStatus({ state }) { const map = { idle: ['编辑后自动保存', <Cloud size={15} />], saving: ['正在保存…', <LoaderCircle className="spin" size={15} />], saved: ['已保存', <Check size={15} />], error: ['保存失败', <CircleAlert size={15} />] }; const [text, icon] = map[state] || map.idle; return <span className={`save-status ${state}`}>{icon}{text}</span>; }
-function formatDate(value) { if (!value) return ''; const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }); }
-function CreateModal({ labs, initialLab, onClose, onCreate }) { const [name, setName] = useState(''); const [categorySlug, setCategorySlug] = useState(initialLab || labs[0]?.slug); const [busy, setBusy] = useState(false); const submit = async (event) => { event.preventDefault(); if (!name.trim()) return; setBusy(true); try { await onCreate({ name, categorySlug }); } finally { setBusy(false); } }; return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><p className="eyebrow">NEW PROJECT / 01</p><h2>建立一个实验</h2></div><button type="button" className="icon-button" onClick={onClose}><X size={18} /></button></div><label>项目名称<input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：跳跃的第 12 帧" /></label><label>选择实验室<div className="lab-select">{labs.map((lab) => <button type="button" className={categorySlug === lab.slug ? 'selected' : ''} key={lab.slug} onClick={() => setCategorySlug(lab.slug)}><span className="lab-option-glyph" style={{ color: lab.accent }}>{lab.glyph}</span><span className="lab-option-copy"><strong>{lab.name}</strong><small>{lab.kind}</small></span></button>)}</div></label><div className="modal-actions"><button type="button" className="button ghost" onClick={onClose}>取消</button><button className="button primary" disabled={busy || !name.trim()}>{busy ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}创建项目</button></div></form></div>; }
-function AccountModal({ user, onClose }) { return <div className="modal-backdrop"><div className="modal account-modal"><div className="modal-head"><div><p className="eyebrow">IDENTITY / LOCAL</p><h2>你的 Atlas 身份</h2></div><button className="icon-button" onClick={onClose}><X size={18} /></button></div><div className="identity-card"><div className="big-avatar"><UserRound size={24} /></div><div><strong>{user.displayName}</strong><p>{user.isGuest ? '匿名访客 · 数据保存在当前设备' : user.email}</p></div><span className="identity-badge">GUEST</span></div><p className="modal-note">现在可以直接开始创作。注册能力已经留在 API 边界中，接入账号系统后可继续同步你的项目。</p><button className="button secondary full" onClick={onClose}>知道了</button></div></div>; }
+function SaveBadge({ state }) {
+  const map = {
+    idle: ['已同步', <Cloud size={15} />],
+    queued: ['自动保存排队', <Save size={15} />],
+    saving: ['保存 SVG 参数…', <LoaderCircle className="spin" size={15} />],
+    saved: ['已保存 / 可刷新还原', <Check size={15} />],
+    error: ['保存失败，稍后重试', <AlertTriangle size={15} />]
+  };
+  const [text, icon] = map[state] || map.idle;
+  return <span className={`save-badge ${state}`}>{icon}{text}</span>;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 createRoot(document.getElementById('root')).render(<App />);
