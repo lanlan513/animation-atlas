@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   AlertTriangle, Check, ChevronDown, Cloud, Download, FilePlus2, GripVertical,
-  Layers, LoaderCircle, Lock, Plus, Save, Shuffle, Sparkles, Trash2, X
+  Layers, LoaderCircle, Lock, Plus, Save, Shuffle, Sparkles, Swords, Trash2, Wand2, X
 } from 'lucide-react';
 import PosterCanvas, { serializeCurrentSvg } from './components/PosterCanvas.jsx';
 import ImpactControls, { LayerPanel, Slider } from './components/Controls.jsx';
 import ImpactArt, { ART_HEIGHT, ART_WIDTH } from './components/ImpactArt.jsx';
+import DuelPage from './duel/DuelPage.jsx';
 import { createPoster, getGuest, listPosters, loadPoster, savePoster } from './api.js';
 import {
   PANEL_LIMITS, createImpact, createImpactLayer, createPoster as defaultPoster,
@@ -31,6 +32,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [bootState, setBootState] = useState('loading');
   const [error, setError] = useState('');
+  const [mode, setMode] = useState('workshop');
   const [posters, setPosters] = useState([]);
   const [posterId, setPosterId] = useState(null);
   const [poster, setPoster] = useState(null);
@@ -312,13 +314,20 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand"><div className="brand-mark"><Sparkles size={17} /></div><strong>PANEL PUNCH</strong><span>超级英雄冲击字工坊</span></div>
+        <div className="brand"><div className="brand-mark"><Sparkles size={17} /></div><strong>PANEL PUNCH</strong><span>{mode === 'duel' ? '英雄双人对决' : '超级英雄冲击字工坊'}</span></div>
+        <nav className="mode-switch">
+          <button className={mode === 'workshop' ? 'active' : ''} onClick={() => setMode('workshop')}><Wand2 size={14} />冲击字工坊</button>
+          <button className={mode === 'duel' ? 'active' : ''} onClick={() => setMode('duel')}><Swords size={14} />英雄对决</button>
+        </nav>
         <div className="top-actions">
-          <SaveBadge state={saveState} />
-          <button className="comic-button" onClick={newPoster}><FilePlus2 size={15} />新海报</button>
+          {mode === 'workshop' && <SaveBadge state={saveState} />}
+          {mode === 'workshop' && <button className="comic-button" onClick={newPoster}><FilePlus2 size={15} />新海报</button>}
         </div>
       </header>
 
+      {mode === 'duel' ? (
+        <DuelPage user={user} flashError={flashError} />
+      ) : (
       <main className="workspace-shell">
         <aside className="sidebar">
           <section className="side-block poster-switcher">
@@ -442,6 +451,7 @@ function App() {
           )}
         </aside>
       </main>
+      )}
 
       {error && <div className="toast error"><AlertTriangle size={17} /><span>{error}</span><button onClick={() => setError('')}><X size={16} /></button></div>}
     </div>

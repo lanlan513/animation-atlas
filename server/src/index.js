@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { panelStore } from './panel-store.js';
+import { duelRoutes } from './duel-routes.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -38,6 +39,8 @@ app.post('/api/auth/guest', async (_req, res, next) => {
 app.get('/api/auth/me', requireGuest, (req, res) => {
   res.json({ user: req.user });
 });
+
+app.use('/api/duels', duelRoutes(requireGuest));
 
 app.get('/api/posters', requireGuest, (req, res) => {
   res.json({ posters: panelStore.list(req.user.id) });

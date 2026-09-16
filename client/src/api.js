@@ -59,3 +59,34 @@ export async function savePoster(id, poster, revision, { keepalive = false } = {
     body: JSON.stringify({ poster })
   });
 }
+
+// ---------- hero duel ----------
+
+export async function submitDuel(setup, { signal } = {}) {
+  return request('/duels', { method: 'POST', signal, body: JSON.stringify({ setup }) });
+}
+
+export async function listDuels() {
+  const result = await request('/duels');
+  return result.records;
+}
+
+export async function listPublicDuels() {
+  const result = await request('/duels/public');
+  return result.records;
+}
+
+export async function loadDuel(id) {
+  const result = await request(`/duels/${id}`);
+  return result.record;
+}
+
+export async function restoreDuel(id) {
+  const result = await request(`/duels/${id}/restore`, { method: 'POST' });
+  return result.record;
+}
+
+export async function setDuelPublic(id, isPublic) {
+  const result = await request(`/duels/${id}/publish`, { method: 'POST', body: JSON.stringify({ isPublic }) });
+  return result.record;
+}

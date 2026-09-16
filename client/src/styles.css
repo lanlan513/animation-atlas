@@ -237,3 +237,117 @@ select { margin-top: 6px; height: 36px; padding: 0 8px; font-size: 11px; font-we
   .stage-toolbar { align-items: flex-start; flex-direction: column; }
   .brand span { display: none; }
 }
+
+/* ---------- hero duel ---------- */
+.mode-switch { display: flex; gap: 6px; }
+.mode-switch button {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px;
+  border: 2px solid #000; border-radius: 7px; background: transparent; color: #cfc4ad;
+  font-weight: 900; font-size: 12px;
+}
+.mode-switch button.active { background: var(--yellow); color: var(--ink); box-shadow: 3px 3px 0 #000; }
+
+.duel-page {
+  width: min(1680px, 100%); margin: 0 auto; padding: 16px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start;
+}
+.duel-config {
+  grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 300px 1fr; gap: 16px; align-items: stretch;
+}
+.hero-panel {
+  border: 3px solid var(--ink); border-radius: 10px; background: var(--panel);
+  box-shadow: 5px 5px 0 #0000001c; padding: 12px 14px;
+}
+.hero-panel header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.hero-chip {
+  padding: 3px 9px; border: 2px solid #000; border-radius: 6px; background: var(--hero-color);
+  color: #fff; font: 12px 'Bangers', Impact, sans-serif; letter-spacing: .06em;
+}
+.hero-name {
+  flex: 1; min-width: 0; border: 0; border-bottom: 2px dashed var(--ink); background: transparent;
+  font-weight: 900; font-size: 14px; padding: 2px 4px;
+}
+.hero-panel input[type="color"] {
+  width: 30px; height: 30px; padding: 0; border: 2px solid #000; border-radius: 6px; background: none;
+}
+.stat-row { display: grid; grid-template-columns: 64px 1fr 34px; align-items: center; gap: 8px; margin: 7px 0; }
+.stat-label { font-size: 11px; font-weight: 900; }
+.stat-row output { font: 11px 'DM Mono', monospace; text-align: right; }
+.stat-row input[type="range"] { accent-color: var(--hero-color, var(--red)); }
+
+.duel-center {
+  border: 3px solid var(--ink); border-radius: 10px; background: var(--panel);
+  box-shadow: 5px 5px 0 #0000001c; padding: 12px; display: flex; flex-direction: column; align-items: center;
+}
+.radar-wrap { width: 100%; }
+.radar-chart { width: 100%; height: auto; display: block; }
+.radar-ring { fill: none; stroke: #d8ccb1; stroke-width: 1; }
+.radar-axis { stroke: #d8ccb1; stroke-width: 1; }
+.radar-label { font-size: 11px; font-weight: 900; fill: var(--ink); }
+.radar-poly { fill-opacity: .28; stroke-width: 2.5; }
+.radar-poly.a, .radar-poly.b { fill: var(--hero-color); stroke: var(--hero-color); }
+.radar-legend { display: flex; justify-content: center; gap: 16px; margin-top: 4px; }
+.radar-legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 900; }
+.radar-legend span::before {
+  content: ''; width: 10px; height: 10px; border: 2px solid #000; border-radius: 3px; background: var(--hero-color);
+}
+.arena-select { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; font-weight: 900; }
+.duel-go { margin-top: 10px; }
+.muted.tiny { font-size: 9px; text-align: center; }
+
+.duel-stage { display: flex; flex-direction: column; gap: 14px; }
+.battle-canvas {
+  width: 100%; display: block; border: 3px solid var(--ink); border-radius: 10px;
+  background: var(--paper); box-shadow: 5px 5px 0 #0000001c;
+}
+.verdict-panel {
+  border: 3px solid var(--ink); border-radius: 10px; background: var(--panel);
+  box-shadow: 5px 5px 0 #0000001c; padding: 14px;
+}
+.verdict-panel.waiting { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.verdict-banner {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 10px 14px; border: 3px solid #000; border-radius: 8px; background: var(--yellow);
+  transform: rotate(-.6deg); box-shadow: 4px 4px 0 #000;
+}
+.verdict-banner strong { font: 22px 'Bangers', Impact, sans-serif; letter-spacing: .04em; }
+.verdict-banner span:last-child { font: 11px 'DM Mono', monospace; }
+.verdict-word { font: 26px 'Bangers', Impact, sans-serif; color: var(--red); -webkit-text-stroke: 1px #000; }
+.verdict-desc { margin: 10px 2px 0; color: var(--muted); font-size: 11px; }
+.verdict-steps { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 7px; }
+.verdict-steps li { font-size: 11px; line-height: 1.5; }
+.verdict-steps code {
+  display: inline-block; margin-right: 7px; padding: 1px 6px; border: 1px solid var(--ink);
+  border-radius: 4px; background: var(--paper-deep); font: 9px 'DM Mono', monospace;
+}
+.verdict-meta {
+  margin: 12px 0 0; padding-top: 9px; border-top: 1px dashed var(--ink);
+  display: flex; align-items: center; gap: 6px; color: var(--muted); font: 9px 'DM Mono', monospace;
+}
+
+.duel-history { display: flex; flex-direction: column; gap: 14px; }
+.history-panel { display: flex; flex-direction: column; gap: 14px; }
+.history-item { display: flex; flex-direction: column; border-bottom: 1px solid #d8ccb1; }
+.history-item.active { background: #ffe98a; }
+.history-main {
+  padding: 8px 12px 4px; border: 0; background: transparent; text-align: left; color: var(--ink);
+}
+.history-main strong { display: block; font-size: 12px; }
+.history-main small { display: flex; align-items: center; gap: 5px; color: var(--muted); font: 9px 'DM Mono', monospace; }
+.history-main small em { display: inline-flex; align-items: center; gap: 2px; font-style: normal; color: var(--blue); }
+.history-actions { display: flex; gap: 6px; padding: 4px 12px 8px; }
+.history-actions button {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px;
+  border: 2px solid #000; border-radius: 5px; background: var(--panel);
+  font-size: 10px; font-weight: 900;
+}
+.history-actions button:hover { background: var(--yellow); }
+.history-actions button.public-on { background: var(--cyan); color: #fff; }
+.history-item.public .history-main { cursor: pointer; }
+.spin { animation: pp-spin 1s linear infinite; }
+@keyframes pp-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 1100px) {
+  .duel-page { grid-template-columns: 1fr; }
+  .duel-config { grid-template-columns: 1fr; }
+}

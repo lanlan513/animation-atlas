@@ -1,6 +1,23 @@
-# Panel Punch — 超级英雄冲击字工坊
+# Panel Punch — 超级英雄冲击字工坊 × 英雄对决
 
 Panel Punch is a full-stack American-comic action-poster editor. Type **BAM / POW / CRASH**, tune the burst outline, ink stroke, halftone dots, bounce curve and RGB channel offset, then drag the result onto an action poster whose layers can be reordered, locked, hidden and re-edited. Refresh the page and the same artwork is restored from saved parameters — not from a screenshot.
+
+The **英雄对决 (Hero Duel)** page is a two-hero decision tool: configure 力量 / 速度 / 装备 / 场景优势 / 弱点 for both fighters, and the **server-side rules engine** produces a chase, melee, counter or retreat ending. The browser only renders the radar chart, the battlefield animation and the engine's step-by-step explanation — it never computes a winner locally.
+
+## Hero Duel
+
+- **Server-only verdicts** (`server/src/duel-engine.js`): terrain amplification → offense/defense scores → tanh-compressed net score → ending rules (`retreat ≥ 70 margin` → `counter` on weakness ≥ 55 vs effective gear ≥ 60 → `chase` on speed gap ≥ 25 → `melee`). Every rule that fires is appended to a human-readable `steps[]` log, and identical setups always reproduce the identical verdict (`seed` = FNV-1a of the sanitized setup).
+- **Traceable records**: every parameter change is submitted as a new append-only record (`server/data/duels/`). Restoring history creates a *new* record with `restoredFrom` lineage; there is no update/delete route for verdicts. The only mutable field is the owner's `isPublic` flag — other users can read published records via the public wall but can never modify them (ownership is checked on every load/publish/restore).
+- **Rate limiting**: duel submissions are capped at 8 per 10 s sliding window per user; excess requests get `429` + `Retry-After`, and the client backs off for the server-provided window with a single retry.
+- **No stale conclusions**: submissions carry a sequence number and an `AbortController` — superseded requests are aborted and late responses discarded. The canvas runs exactly one rAF loop; a newer verdict replaces the timeline immediately, and while a verdict is in flight the previous conclusion is torn down in favor of a neutral "judging" idle.
+
+### Duel API
+
+- `POST /api/duels` — submit a setup, returns the frozen record (setup + verdict)
+- `GET /api/duels` — own history · `GET /api/duels/public` — public wall
+- `GET /api/duels/:id` — owner always; others only when published
+- `POST /api/duels/:id/restore` — new record from a historical setup (lineage kept)
+- `POST /api/duels/:id/publish` — owner-only `isPublic` toggle
 
 ## Run locally
 
