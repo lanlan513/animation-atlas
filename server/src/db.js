@@ -2,14 +2,22 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DatabaseSync } from 'node:sqlite';
+
+// 优先使用 Node 22+ 内置的 node:sqlite，旧版本 Node 回退到 better-sqlite3（两者 API 兼容）。
+let DatabaseSync;
+try {
+  ({ DatabaseSync } = await import('node:sqlite'));
+} catch {
+  ({ default: DatabaseSync } = await import('better-sqlite3'));
+}
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(here, '../data');
 fs.mkdirSync(dataDir, { recursive: true });
 
 const db = new DatabaseSync(path.join(dataDir, 'animation-atlas.db'));
-db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+if (typeof db.pragma === 'function') { db.pragma('journal_mode = WAL'); db.pragma('foreign_keys = ON'); }
+else db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -75,6 +83,60 @@ db.exec(`
     status TEXT NOT NULL DEFAULT 'queued',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS comic_chapters (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    chapter_number INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(project_id, chapter_number)
+  );
+  CREATE TABLE IF NOT EXISTS comic_pages (
+    id TEXT PRIMARY KEY,
+    chapter_id TEXT NOT NULL REFERENCES comic_chapters(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    page_number INTEGER NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    width INTEGER NOT NULL DEFAULT 1200,
+    height INTEGER NOT NULL DEFAULT 1600,
+    background TEXT NOT NULL DEFAULT '{}',
+    actors TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(chapter_id, page_number)
+  );
+  CREATE TABLE IF NOT EXISTS comic_panels (
+    id TEXT PRIMARY KEY,
+    page_id TEXT NOT NULL REFERENCES comic_pages(id) ON DELETE CASCADE,
+    panel_key TEXT NOT NULL,
+    reading_order INTEGER NOT NULL DEFAULT 0,
+    polygon TEXT NOT NULL DEFAULT '[]',
+    focus TEXT NOT NULL DEFAULT '{}',
+    art TEXT NOT NULL DEFAULT '{}',
+    degraded INTEGER NOT NULL DEFAULT 0,
+    issues TEXT NOT NULL DEFAULT '[]',
+    UNIQUE(page_id, panel_key)
+  );
+  CREATE TABLE IF NOT EXISTS comic_beats (
+    id TEXT PRIMARY KEY,
+    panel_id TEXT NOT NULL REFERENCES comic_panels(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL DEFAULT 0,
+    type TEXT NOT NULL,
+    payload TEXT NOT NULL DEFAULT '{}',
+    duration_ms INTEGER NOT NULL DEFAULT 900,
+    delay_ms INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS comic_progress (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    page_id TEXT,
+    panel_id TEXT,
+    reading_order INTEGER NOT NULL DEFAULT 0,
+    mode TEXT NOT NULL DEFAULT 'free',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, project_id)
   );
 `);
 

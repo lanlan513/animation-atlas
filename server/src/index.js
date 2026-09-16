@@ -5,6 +5,7 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import db from './db.js';
+import { registerComicRoutes } from './comic.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -126,6 +127,8 @@ app.post('/api/projects/:projectId/tasks', requireUser, requireProjectOwner, (re
   db.prepare('INSERT INTO async_tasks (id, project_id, requested_by, type, payload) VALUES (?, ?, ?, ?, ?)').run(id, req.project.id, req.user.id, req.body?.type || 'render-preview', JSON.stringify(req.body?.payload || {}));
   res.status(202).json({ task: { id, status: 'queued' } });
 });
+
+registerComicRoutes(app, { requireUser, requireProjectOwner });
 
 app.use((err, _req, res, _next) => {
   console.error(err);
