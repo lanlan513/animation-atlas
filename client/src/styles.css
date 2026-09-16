@@ -212,3 +212,178 @@ footer { width: min(1160px, 90vw); margin: auto; min-height: 58px; justify-conte
   .designer-layout { grid-template-columns: 190px minmax(0, 1fr) 224px; }
   .tool-tip { display: none; }
 }
+
+/* ================= Sakuga 工具枢纽 ================= */
+.sakuga-hub { min-height: 100vh; display: flex; flex-direction: column; background: radial-gradient(circle at 80% -10%, #2a2130 0, transparent 40%), #0e0f13; }
+.hub-bar { height: 64px; display: flex; align-items: center; gap: 16px; padding: 0 22px; border-bottom: 1px solid var(--line); }
+.hub-bar h2 { margin: 0; font-size: 15px; }
+.hub-bar .eyebrow { margin: 0 0 2px; }
+.hub-glyph { margin-left: auto; font-size: 26px; color: #f2674a; text-shadow: 0 0 18px #f2674a88; }
+.hub-choice { flex: 1; width: min(980px, 92vw); margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 46px 0; }
+.tool-entry { display: flex; flex-direction: column; gap: 16px; padding: 26px; text-align: left; border: 1px solid #303139; border-radius: 12px; background: linear-gradient(150deg, #1b1d24, #131419); color: #d7d5cf; transition: transform .18s ease, border-color .18s ease; position: relative; overflow: hidden; }
+.tool-entry:hover { transform: translateY(-4px); }
+.tool-entry.battle:hover { border-color: #f2674a; }
+.tool-entry.henshin:hover { border-color: #ff7eb6; }
+.tool-entry::after { content: ''; position: absolute; width: 220px; height: 220px; right: -90px; bottom: -110px; border-radius: 50%; border: 1px solid #ffffff14; }
+.tool-entry-glyph { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 12px; }
+.tool-entry.battle .tool-entry-glyph { color: #f2674a; background: #f2674a17; }
+.tool-entry.henshin .tool-entry-glyph { color: #ff7eb6; background: #ff7eb617; }
+.tool-entry-copy h3 { margin: 0 0 9px; font-size: 19px; letter-spacing: -.02em; }
+.tool-entry-copy p { margin: 0 0 10px; color: #94969f; font-size: 12px; line-height: 1.65; }
+.tool-entry-copy small { color: #696b74; font: 9px 'DM Mono', monospace; letter-spacing: .05em; }
+.tool-entry > svg { position: absolute; right: 20px; top: 20px; color: #7d7f88; }
+
+/* ================= 变身演出生成台 ================= */
+.henshin-studio { min-height: 100vh; display: flex; flex-direction: column; background: #0d0e12; --accent: var(--henshin-accent, #ff7eb6); }
+.henshin-bar { flex: 0 0 58px; display: flex; align-items: center; gap: 13px; padding: 0 16px; border-bottom: 1px solid var(--line); background: #131419; }
+.henshin-bar .eyebrow { margin: 0; }
+.henshin-bar h2 { margin: 0; font-size: 13px; white-space: nowrap; }
+.henshin-template-switch { display: flex; gap: 6px; margin-left: 10px; }
+.henshin-template-switch button { display: flex; align-items: center; gap: 7px; padding: 6px 11px; border: 1px solid #2c2e36; border-radius: 20px; background: #17181d; color: #9a9ca5; font-size: 11px; }
+.henshin-template-switch button i { font-style: normal; color: var(--tpl-accent); font-size: 14px; }
+.henshin-template-switch button.active { border-color: var(--tpl-accent); color: #f2f0ea; background: color-mix(in srgb, var(--tpl-accent) 12%, #17181d); }
+.henshin-bar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.henshin-current-shot { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid color-mix(in srgb, var(--accent) 40%, #2c2e36); border-radius: 20px; color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); font-size: 10px; font-weight: 700; }
+
+/* 画布通用 */
+.henshin-canvas { width: 100%; height: 100%; display: block; border-radius: 8px; background: #000; }
+.constellation-frame, .cockpit-frame, .scroll-frame { position: relative; border: 1px solid #2c2e36; border-radius: 10px; overflow: hidden; background: #000; aspect-ratio: 16 / 9; }
+.panel-scroll { overflow-y: auto; }
+
+/* 时间轴 / 走带 */
+.henshin-transport { display: flex; align-items: center; gap: 12px; padding: 10px 6px 2px; }
+.henshin-play { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; border: 1px solid var(--accent); border-radius: 50%; color: #111; background: var(--accent); }
+.henshin-mute { width: 30px; height: 30px; border: 1px solid #2c2e36; border-radius: 7px; background: #17181d; font-size: 13px; }
+.henshin-mute.is-muted { opacity: .55; }
+.henshin-timeline { position: relative; flex: 1; height: 46px; cursor: pointer; touch-action: none; }
+.henshin-shots { position: absolute; inset: 0 0 16px; display: block; }
+.henshin-shot { position: absolute; top: 2px; bottom: 2px; display: flex; align-items: center; gap: 5px; padding: 0 7px; border: 1px solid #34363f; border-radius: 5px; background: #171920; overflow: hidden; }
+.henshin-shot.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, #171920); }
+.henshin-shot-index { font: 8px 'DM Mono', monospace; color: var(--accent); }
+.henshin-shot-name { font-size: 9px; color: #c9cbd4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.henshin-beat-row { position: absolute; left: 0; right: 0; bottom: 2px; height: 12px; }
+.henshin-beat-row i { position: absolute; top: 3px; width: 2px; height: 6px; background: #6d7079; border-radius: 1px; }
+.henshin-beat-row i.downbeat { height: 11px; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.henshin-playhead { position: absolute; top: -2px; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 8px #fff9; pointer-events: none; }
+.henshin-timecode { flex: 0 0 auto; font: 11px 'DM Mono', monospace; color: #8b8e98; white-space: nowrap; }
+.henshin-timecode strong { color: #f0eee8; font-size: 14px; }
+.henshin-timecode small { display: block; color: #666872; font-size: 8px; }
+
+/* 配置面板通用 */
+.henshin-config { display: flex; flex-direction: column; gap: 14px; }
+.henshin-panel-loading { display: grid; place-items: center; padding: 30px; color: #888; }
+.henshin-field { display: flex; flex-direction: column; gap: 7px; }
+.henshin-field > span { font-size: 10px; font-weight: 700; color: #8e909a; letter-spacing: .04em; display: flex; justify-content: space-between; }
+.henshin-count { color: var(--accent); font: 9px 'DM Mono', monospace; }
+.henshin-field input[type="text"], .henshin-field input:not([type]) { width: 100%; height: 34px; padding: 0 10px; border: 1px solid #30323a; border-radius: 6px; background: #101116; color: #e8e6e0; font-size: 12px; outline: none; }
+.henshin-field input:focus { border-color: var(--accent); }
+.henshin-color-row { display: flex; align-items: center; gap: 9px; }
+.henshin-color-row input[type="color"] { width: 38px; height: 34px; padding: 2px; border: 1px solid #30323a; border-radius: 6px; background: #101116; }
+.henshin-color-row code { font: 10px 'DM Mono', monospace; color: #9a9ca5; }
+.henshin-swatches { margin-left: auto; display: flex; gap: 5px; }
+.henshin-swatches button { width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; }
+.henshin-swatches button.active { border-color: #fff; }
+.henshin-symbol-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.henshin-symbol-grid button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px; border: 1px solid #2c2e36; border-radius: 7px; background: #17181d; color: #9a9ca5; }
+.henshin-symbol-grid button i { font-style: normal; font-size: 18px; color: var(--sym-color); }
+.henshin-symbol-grid button small { font-size: 8px; }
+.henshin-symbol-grid button.active { border-color: var(--sym-color); color: #f2f0ea; background: color-mix(in srgb, var(--sym-color) 10%, #17181d); }
+.henshin-track-list { display: flex; flex-direction: column; gap: 6px; }
+.henshin-track-list button { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid #2c2e36; border-radius: 7px; background: #17181d; text-align: left; }
+.henshin-track-list button strong { font-size: 11px; color: #c9cbd4; }
+.henshin-track-list button small { font: 8px 'DM Mono', monospace; color: #777a84; }
+.henshin-track-list button.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, #17181d); }
+.henshin-beats { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px; }
+.henshin-beats li { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px 2px 8px; border: 1px solid #34363f; border-radius: 20px; background: #17181d; }
+.henshin-beats code { font: 9px 'DM Mono', monospace; color: var(--accent); }
+.henshin-beats button { border: 0; background: transparent; color: #7d7f88; font-size: 12px; line-height: 1; }
+.henshin-save-hint { display: flex; align-items: center; gap: 6px; font: 9px 'DM Mono', monospace; padding-top: 6px; border-top: 1px dashed #2c2e36; }
+.henshin-save-hint.saved { color: #87c995; } .henshin-save-hint.dirty { color: #f4b942; } .henshin-save-hint.saving { color: #8fb6d8; }
+
+/* 资源 / 版本面板 */
+.henshin-resources, .henshin-renderings { display: flex; flex-direction: column; gap: 9px; }
+.henshin-panel-title { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: #b9bbc4; }
+.henshin-resource-form { display: flex; flex-direction: column; gap: 6px; }
+.henshin-kind-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.henshin-kind-row button { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 6px 2px; border: 1px solid #2c2e36; border-radius: 6px; background: #17181d; color: #94969f; font-size: 9px; }
+.henshin-kind-row button span { font-size: 11px; }
+.henshin-kind-row button.active { border-color: var(--accent); color: #f0eee8; }
+.henshin-resource-form input { height: 30px; padding: 0 9px; border: 1px solid #30323a; border-radius: 6px; background: #101116; color: #e8e6e0; font-size: 10px; outline: none; }
+.henshin-inline-error { margin: 0; color: #f08170; font-size: 10px; line-height: 1.4; }
+.henshin-resource-list, .henshin-rendering-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; max-height: 190px; overflow-y: auto; }
+.henshin-resource-list li, .henshin-rendering-list li { display: flex; align-items: center; gap: 9px; padding: 7px 9px; border: 1px solid #272931; border-radius: 7px; background: #14151a; }
+.henshin-empty { color: #676973; font-size: 10px; line-height: 1.5; border-style: dashed !important; }
+.resource-glyph, .rendering-version { flex: 0 0 auto; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-size: 12px; font-weight: 700; }
+.resource-label, .rendering-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.resource-label strong, .rendering-meta strong { font-size: 11px; color: #d3d5dd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.resource-label small, .rendering-meta small { font: 8px 'DM Mono', monospace; color: #777a84; }
+.resource-error { color: #f08170; font-size: 9px; font-style: normal; }
+.status-ok { color: #87c995; } .status-bad { color: #f08170; }
+.status-ready .resource-glyph, .status-ready .rendering-version { box-shadow: inset 0 0 0 1px #35503c; }
+.henshin-owner-note { display: flex; align-items: center; gap: 5px; margin: 2px 0 0; color: #697168; font-size: 9px; }
+
+/* ================= 布局一：constellation（放射星环） ================= */
+.layout-constellation { flex: 1; min-height: 0; display: grid; grid-template-columns: 264px minmax(0, 1fr) 248px; grid-template-areas: "left stage right"; background: radial-gradient(circle at 50% 42%, #1c1526 0, #0d0e12 62%); }
+.layout-constellation .constellation-left { grid-area: left; overflow-y: auto; border-right: 1px solid var(--line); background: #111019; padding: 16px; }
+.layout-constellation .constellation-stage { grid-area: stage; display: flex; flex-direction: column; padding: 18px 20px 12px; min-width: 0; }
+.layout-constellation .constellation-right { grid-area: right; border-left: 1px solid var(--line); background: #111019; padding: 16px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+.constellation-frame { box-shadow: 0 0 60px color-mix(in srgb, var(--accent) 16%, transparent); }
+.constellation-ribbon { position: absolute; left: 14px; right: 14px; bottom: 12px; pointer-events: none; }
+.henshin-shotribbon { display: flex; justify-content: center; gap: 8px; }
+.ribbon-shot { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 20px; border: 1px solid #ffffff22; background: #0c0d12b8; backdrop-filter: blur(4px); }
+.ribbon-shot i { font: 8px 'DM Mono', monospace; color: #ffffff66; }
+.ribbon-shot span { font-size: 9px; color: #ffffff99; }
+.ribbon-shot.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, #0c0d12d9); }
+.ribbon-shot.active span { color: #fff; }
+
+/* ================= 布局二：cockpit（驾驶舱） ================= */
+.layout-cockpit { flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0a0d12; }
+.henshin-hudstrip { flex: 0 0 34px; display: flex; align-items: stretch; border-bottom: 1px solid #233441; background: #0e141b; }
+.hud-cell { display: flex; align-items: center; gap: 8px; padding: 0 16px; border-right: 1px solid #1c2a35; }
+.hud-cell label { color: #5b7488; font: 8px 'DM Mono', monospace; letter-spacing: .12em; }
+.hud-cell strong { color: #9fd8ff; font: 600 11px 'DM Mono', monospace; letter-spacing: .06em; }
+.hud-lamp { margin-left: auto; display: flex; align-items: center; padding: 0 18px; color: #5f7184; font: 9px 'DM Mono', monospace; letter-spacing: .14em; }
+.hud-lamp::before { content: ''; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: #5f7184; }
+.hud-lamp.on { color: #84cf9b; } .hud-lamp.on::before { background: #84cf9b; box-shadow: 0 0 8px #84cf9b; }
+.cockpit-grid { flex: 1; display: grid; grid-template-columns: 236px minmax(0, 1fr) 264px; min-height: 0; }
+.cockpit-left, .cockpit-right { overflow-y: auto; padding: 14px; background: #0c1016; }
+.cockpit-left { border-right: 1px solid #1c2a35; display: flex; flex-direction: column; gap: 14px; }
+.cockpit-right { border-left: 1px solid #1c2a35; }
+.hud-panel { border: 1px solid #1b2731; border-radius: 8px; padding: 12px; background: #0e141b; }
+.cockpit-stage { display: flex; flex-direction: column; padding: 14px 16px 10px; min-width: 0; }
+.cockpit-frame { border-color: #24415a; clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px)); }
+
+/* ================= 布局三：scroll（竖卷轴） ================= */
+.layout-scroll { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 292px; min-height: 0; background: #e9e4d7; }
+.layout-scroll .scroll-stage { display: flex; flex-direction: column; padding: 16px 22px 10px; min-width: 0; background: linear-gradient(90deg, #e4decd, #efeadd 60%, #e4decd); }
+.layout-scroll .scroll-right { border-left: 1px solid #c7bda5; background: #ded7c4; padding: 14px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+.layout-scroll .scroll-panel { border: 1px solid #c2b79c; border-radius: 4px; background: #f2ede0; padding: 13px; color: #2b261f; }
+.layout-scroll .scroll-panel.slim { padding: 11px 13px; }
+.henshin-scroll-index { list-style: none; margin: 0 0 10px; padding: 0; display: flex; gap: 8px; }
+.henshin-scroll-index li { display: flex; align-items: center; gap: 8px; flex: 1; padding: 7px 9px; border: 1px solid #b8ac90; border-radius: 4px; background: #f4efe2; opacity: .62; }
+.henshin-scroll-index li.active { opacity: 1; border-color: #7a6d50; background: #fffaf0; box-shadow: 0 2px 0 #b8ac90; }
+.henshin-scroll-index i { font: 9px 'DM Mono', monospace; color: #8a7d60; }
+.henshin-scroll-index strong { display: block; font-size: 10px; color: #2b261f; }
+.henshin-scroll-index small { font: 8px 'DM Mono', monospace; color: #8a7d60; }
+.scroll-frame { border: 1px solid #b8ac90; box-shadow: 6px 6px 0 #00000012; }
+/* 卷轴布局下的控件翻为墨色 */
+.layout-scroll .henshin-field > span, .layout-scroll .henshin-panel-title { color: #5c523e; }
+.layout-scroll .henshin-field input:not([type]), .layout-scroll .henshin-resource-form input { background: #fffdf6; border-color: #c7bda5; color: #2b261f; }
+.layout-scroll .henshin-symbol-grid button, .layout-scroll .henshin-track-list button, .layout-scroll .henshin-kind-row button { background: #f8f3e6; border-color: #c7bda5; color: #5c523e; }
+.layout-scroll .henshin-resource-list li, .layout-scroll .henshin-rendering-list li { background: #f8f3e6; border-color: #d5cbb2; }
+.layout-scroll .resource-label strong, .layout-scroll .rendering-meta strong { color: #2b261f; }
+.layout-scroll .henshin-shot { background: #e7e0cd; border-color: #c2b79c; }
+.layout-scroll .henshin-shot.active { background: #fffaf0; }
+.layout-scroll .henshin-playhead { background: #7a2f28; box-shadow: 0 0 6px #7a2f28; }
+.layout-scroll .henshin-timecode { color: #6d6249; } .layout-scroll .henshin-timecode strong { color: #2b261f; }
+
+@media (max-width: 1100px) {
+  .layout-constellation { grid-template-columns: 230px minmax(0, 1fr); grid-template-areas: "left stage" "right stage"; }
+  .layout-constellation .constellation-right { display: none; }
+  .cockpit-grid { grid-template-columns: minmax(0, 1fr) 240px; }
+  .cockpit-left { display: none; }
+  .layout-scroll { grid-template-columns: minmax(0, 1fr); }
+  .layout-scroll .scroll-right { display: none; }
+  .hub-choice { grid-template-columns: 1fr; }
+  .henshin-template-switch button span { display: none; }
+}

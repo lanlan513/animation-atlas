@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowUpRight, Check, CircleAlert, Clock3, Cloud, Command, Film, LoaderCircle, Plus, RefreshCw, Save, Sparkles, Upload, UserRound, X } from 'lucide-react';
+import { ArrowUpRight, Check, CircleAlert, Clock3, Cloud, Command, Film, LoaderCircle, Plus, RefreshCw, Save, Sparkles, Upload, UserRound, Wand2, X } from 'lucide-react';
 import DesignerShell from './designer/DesignerShell.jsx';
+import HenshinStudio from './henshin/HenshinStudio.jsx';
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -38,7 +39,8 @@ function App() {
   const [showCreate, setShowCreate] = useState(false);
   const [createLab, setCreateLab] = useState(null);
   const [showAccount, setShowAccount] = useState(false);
-  const [designerMode, setDesignerMode] = useState(false);
+  // Sakuga Spark 项目进入后先到工具枢纽：battle（战斗镜头设计器）/ henshin（变身演出生成台）
+  const [tool, setTool] = useState(null); // null | 'hub' | 'battle' | 'henshin'
 
   const run = useCallback(async (fn) => { setError(''); try { return await fn(); } catch (err) { setError(err.message); throw err; } }, []);
 
@@ -61,16 +63,18 @@ function App() {
   useEffect(() => { load(); }, [load]);
 
   const chooseProject = useCallback(async (project) => {
-    setSelected(project); setSaveState('idle'); setDesignerMode(false);
+    setSelected(project); setSaveState('idle');
     if (project.categorySlug === 'sakuga-spark') {
-      setDesignerMode(true);
-      return; // 战斗镜头设计器走自己的 /clip 端点，不加载草稿
+      // 日漫实验室：先在枢纽里选择战斗镜头设计器或变身演出生成台
+      setTool('hub');
+      return;
     }
+    setTool(null);
     try { const result = await run(() => request(`/projects/${project.id}`, { headers: { 'x-user-id': user.id } })); setDraft(result.project.draft?.content || { nodes: [], settings: {} }); }
     catch { setDraft({ nodes: [], settings: {} }); }
   }, [run, user]);
 
-  const exitDesigner = useCallback(() => { setDesignerMode(false); setSelected(null); }, []);
+  const exitTool = useCallback(() => { setTool(null); setSelected(null); }, []);
 
   const createProject = async ({ name, categorySlug }) => {
     const result = await run(() => request('/projects', { method: 'POST', headers: { 'x-user-id': user.id }, body: JSON.stringify({ name, categorySlug }) }));
@@ -91,8 +95,21 @@ function App() {
 
   if (loadState === 'loading') return <div className="screen-state"><LoaderCircle className="spin" size={26} /><span>正在连接 Atlas…</span></div>;
   if (loadState === 'error') return <div className="screen-state"><CircleAlert size={26} /><span>加载失败</span><button className="button ghost" onClick={load}><RefreshCw size={15} />重试</button></div>;
-  if (designerMode && selected) {
-    return <DesignerShell project={selected} user={user} api={request} onError={setError} onExit={exitDesigner} />;
+  if (tool === 'battle' && selected) {
+    return <DesignerShell project={selected} user={user} api={request} onError={setError} onExit={exitTool} />;
+  }
+  if (tool === 'henshin' && selected) {
+    return <HenshinStudio project={selected} user={user} api={request} onError={setError} onExit={exitTool} />;
+  }
+  if (tool === 'hub' && selected) {
+    return (
+      <SakugaHub
+        project={selected}
+        onPickBattle={() => setTool('battle')}
+        onPickHenshin={() => setTool('henshin')}
+        onBack={exitTool}
+      />
+    );
   }
   return <div className="app-shell">
     <header className="topbar"><div className="brand"><div className="brand-mark"><Sparkles size={17} /></div><span>ANIMATION ATLAS</span><em>LAB / 01</em></div><div className="top-actions"><span className="system-status"><span className="status-dot" />系统在线</span><button className="icon-button" title="快捷键"><Command size={17} /></button><button className="profile" onClick={() => setShowAccount(true)}><span className="avatar"><UserRound size={15} /></span>{user?.displayName}<span className="chevron">⌄</span></button></div></header>
@@ -107,5 +124,43 @@ function SaveStatus({ state }) { const map = { idle: ['编辑后自动保存', <
 function formatDate(value) { if (!value) return ''; const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }); }
 function CreateModal({ labs, initialLab, onClose, onCreate }) { const [name, setName] = useState(''); const [categorySlug, setCategorySlug] = useState(initialLab || labs[0]?.slug); const [busy, setBusy] = useState(false); const submit = async (event) => { event.preventDefault(); if (!name.trim()) return; setBusy(true); try { await onCreate({ name, categorySlug }); } finally { setBusy(false); } }; return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><p className="eyebrow">NEW PROJECT / 01</p><h2>建立一个实验</h2></div><button type="button" className="icon-button" onClick={onClose}><X size={18} /></button></div><label>项目名称<input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：跳跃的第 12 帧" /></label><label>选择实验室<div className="lab-select">{labs.map((lab) => <button type="button" className={categorySlug === lab.slug ? 'selected' : ''} key={lab.slug} onClick={() => setCategorySlug(lab.slug)}><span className="lab-option-glyph" style={{ color: lab.accent }}>{lab.glyph}</span><span className="lab-option-copy"><strong>{lab.name}</strong><small>{lab.kind}</small></span></button>)}</div></label><div className="modal-actions"><button type="button" className="button ghost" onClick={onClose}>取消</button><button className="button primary" disabled={busy || !name.trim()}>{busy ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}创建项目</button></div></form></div>; }
 function AccountModal({ user, onClose }) { return <div className="modal-backdrop"><div className="modal account-modal"><div className="modal-head"><div><p className="eyebrow">IDENTITY / LOCAL</p><h2>你的 Atlas 身份</h2></div><button className="icon-button" onClick={onClose}><X size={18} /></button></div><div className="identity-card"><div className="big-avatar"><UserRound size={24} /></div><div><strong>{user.displayName}</strong><p>{user.isGuest ? '匿名访客 · 数据保存在当前设备' : user.email}</p></div><span className="identity-badge">GUEST</span></div><p className="modal-note">现在可以直接开始创作。注册能力已经留在 API 边界中，接入账号系统后可继续同步你的项目。</p><button className="button secondary full" onClick={onClose}>知道了</button></div></div>; }
+
+// Sakuga Spark / 日漫实验室的工具枢纽：同一项目下两条完全独立的生产线
+function SakugaHub({ project, onPickBattle, onPickHenshin, onBack }) {
+  return (
+    <div className="sakuga-hub">
+      <header className="hub-bar">
+        <button className="button ghost small" onClick={onBack}>← 项目列表</button>
+        <div>
+          <p className="eyebrow">SAKUGA SPARK / 日漫实验室</p>
+          <h2>{project.name}</h2>
+        </div>
+        <span className="hub-glyph">✦</span>
+      </header>
+      <div className="hub-choice">
+        <button className="tool-entry battle" onClick={onPickBattle}>
+          <span className="tool-entry-glyph"><Film size={26} /></span>
+          <span className="tool-entry-copy">
+            <p className="eyebrow">TOOL / 01</p>
+            <h3>高燃战斗镜头设计器</h3>
+            <p>十秒固定片段、五层素材库、五种镜头行为（推 / 摇 / 震 / 闪 / 定格），Worker 烤帧 601 帧 O(1) 查表。</p>
+            <small>关键帧时间轴 · 乐观锁 · SVG 素材</small>
+          </span>
+          <ArrowUpRight size={18} />
+        </button>
+        <button className="tool-entry henshin" onClick={onPickHenshin}>
+          <span className="tool-entry-glyph"><Wand2 size={26} /></span>
+          <span className="tool-entry-copy">
+            <p className="eyebrow">TOOL / 02</p>
+            <h3>变身演出生成台</h3>
+            <p>魔法少女 / 机甲启动 / 剑士觉醒三套模板，镜头顺序、页面布局与 Canvas 粒子动画逻辑完全不同；替换角色名、主色、光效符号与音轨节拍即可发布。</p>
+            <small>Canvas 粒子遮罩 · 异步资源任务 · 不可变发布版本</small>
+          </span>
+          <ArrowUpRight size={18} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 createRoot(document.getElementById('root')).render(<App />);

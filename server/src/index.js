@@ -6,6 +6,11 @@ import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import db from './db.js';
 import { getClipByProject, listLibraryAssets, saveClip, ValidationError, VersionConflictError } from './clips.js';
+import {
+  getConfig as getHenshinConfig, getRendering, listRenderings, listResources,
+  listTemplates, publishRendering, registerResource, saveConfig as saveHenshinConfig, HenshinValidationError
+} from './henshin.js';
+import { TaskValidationError, enqueueTask, getTask, listHenshinTasks } from './henshinTasks.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -29,6 +34,14 @@ function requireProjectOwner(req, res, next) {
   const project = db.prepare('SELECT p.*, c.slug AS category_slug, c.name AS category_name, c.kind AS category_kind, c.accent, c.glyph FROM projects p JOIN categories c ON c.id = p.category_id WHERE p.id = ? AND p.owner_id = ?').get(req.params.projectId, req.user.id);
   if (!project) return res.status(404).json({ error: '找不到这个项目，或你没有访问权限。' });
   req.project = project;
+  next();
+}
+
+// 变身演出台只挂在 Sakuga Spark（日漫实验室）下：其他实验室拿到 404
+function requireHenshinLab(req, res, next) {
+  if (req.project.category_slug !== 'sakuga-spark') {
+    return res.status(404).json({ error: '变身演出生成台只在 Sakuga Spark / 日漫实验室开放。' });
+  }
   next();
 }
 
@@ -150,9 +163,87 @@ app.post('/api/projects/:projectId/assets', requireUser, requireProjectOwner, up
 });
 
 app.post('/api/projects/:projectId/tasks', requireUser, requireProjectOwner, (req, res) => {
-  const id = crypto.randomUUID();
-  db.prepare('INSERT INTO async_tasks (id, project_id, requested_by, type, payload) VALUES (?, ?, ?, ?, ?)').run(id, req.project.id, req.user.id, req.body?.type || 'render-preview', JSON.stringify(req.body?.payload || {}));
-  res.status(202).json({ task: { id, status: 'queued' } });
+  try {
+    const task = enqueueTask({
+      projectId: req.project.id,
+      userId: req.user.id,
+      type: req.body?.type || 'render-preview',
+      payload: req.body?.payload || {}
+    });
+    res.status(202).json({ task: { id: task.id, status: task.status } });
+  } catch (error) {
+    if (error instanceof TaskValidationError) return res.status(400).json({ error: error.message });
+    throw error;
+  }
+});
+
+// ================= 变身演出生成台（Henshin Stage） =================
+// 所有接口都经过 requireUser + requireProjectOwner：发布 / 配置 / 资源只允许当前项目所有者。
+const ownerChain = [requireUser, requireProjectOwner, requireHenshinLab];
+
+app.get('/api/henshin/templates', (_req, res) => {
+  res.json({ templates: listTemplates() });
+});
+
+app.get('/api/projects/:projectId/henshin/config', ...ownerChain, (req, res) => {
+  const result = getHenshinConfig(req.project.id);
+  res.json(result || { templateSlug: null, config: null, updatedAt: null });
+});
+
+app.put('/api/projects/:projectId/henshin/config', ...ownerChain, (req, res) => {
+  try {
+    const result = saveHenshinConfig(req.project.id, req.user.id, req.body?.templateSlug, req.body?.config);
+    res.json({ saved: true, ...result });
+  } catch (error) {
+    if (error instanceof HenshinValidationError) return res.status(400).json({ error: error.message, errors: error.errors });
+    throw error;
+  }
+});
+
+app.get('/api/projects/:projectId/henshin/resources', ...ownerChain, (req, res) => {
+  res.json({ resources: listResources(req.project.id) });
+});
+
+app.post('/api/projects/:projectId/henshin/resources', ...ownerChain, (req, res) => {
+  try {
+    const resource = registerResource(req.project.id, req.user.id, req.body || {});
+    res.status(202).json({ resource });
+  } catch (error) {
+    if (error instanceof HenshinValidationError) return res.status(400).json({ error: error.message, errors: error.errors });
+    throw error;
+  }
+});
+
+app.get('/api/projects/:projectId/henshin/renderings', ...ownerChain, (req, res) => {
+  res.json({ renderings: listRenderings(req.project.id) });
+});
+
+// 发布演出：仅当前项目所有者可创建（ownerChain 已保证），生成不可变版本并入队烘焙
+app.post('/api/projects/:projectId/henshin/renderings', ...ownerChain, (req, res) => {
+  try {
+    const rendering = publishRendering(req.project.id, req.user.id, req.body?.name);
+    res.status(202).json({ rendering });
+  } catch (error) {
+    if (error instanceof HenshinValidationError) return res.status(400).json({ error: error.message, errors: error.errors });
+    throw error;
+  }
+});
+
+app.get('/api/projects/:projectId/henshin/renderings/:renderingId', ...ownerChain, (req, res) => {
+  const rendering = getRendering(req.project.id, req.params.renderingId);
+  if (!rendering) return res.status(404).json({ error: '找不到这个发布版本。' });
+  res.json({ rendering });
+});
+
+app.get('/api/projects/:projectId/henshin/tasks', ...ownerChain, (req, res) => {
+  res.json({ tasks: listHenshinTasks(req.project.id) });
+});
+
+// 异步资源处理的可查询任务状态
+app.get('/api/projects/:projectId/henshin/tasks/:taskId', ...ownerChain, (req, res) => {
+  const task = getTask(req.project.id, req.params.taskId);
+  if (!task) return res.status(404).json({ error: '找不到这个任务。' });
+  res.json({ task });
 });
 
 app.use((err, _req, res, _next) => {

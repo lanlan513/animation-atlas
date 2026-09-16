@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { LIBRARY_ASSETS } from './librarySeed.js';
+import { HENSHIN_TEMPLATES } from './henshinSeed.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.ATLAS_DATA_DIR
@@ -76,9 +77,66 @@ db.exec(`
     type TEXT NOT NULL,
     payload TEXT NOT NULL DEFAULT '{}',
     status TEXT NOT NULL DEFAULT 'queued',
+    progress INTEGER NOT NULL DEFAULT 0,
+    result TEXT,
+    error TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at TEXT
   );
+
+  -- 变身演出生成台 --------------------------------------------------------
+  -- 1) 模板定义（内置只读：三个截然不同的镜头顺序 / 布局 / 动画逻辑）
+  CREATE TABLE IF NOT EXISTS henshin_templates (
+    slug TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    subtitle TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    layout TEXT NOT NULL,
+    renderer TEXT NOT NULL,
+    accent TEXT NOT NULL,
+    definition TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0
+  );
+  -- 2) 用户配置：每个项目至多一份（唯一约束），切模板即整份替换
+  CREATE TABLE IF NOT EXISTS henshin_configs (
+    project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    template_slug TEXT NOT NULL REFERENCES henshin_templates(slug),
+    config TEXT NOT NULL,
+    updated_by TEXT NOT NULL REFERENCES users(id),
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  -- 3) 资源引用：异步处理的音频 / 符号 / 遮罩资源
+  CREATE TABLE IF NOT EXISTS henshin_resources (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    label TEXT NOT NULL,
+    storage_key TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    task_id TEXT REFERENCES async_tasks(id),
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_by TEXT NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  -- 4) 生成版本：每次「发布」都快照一份不可变的演出定义
+  CREATE TABLE IF NOT EXISTS henshin_renderings (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    version_number INTEGER NOT NULL,
+    template_slug TEXT NOT NULL REFERENCES henshin_templates(slug),
+    name TEXT NOT NULL,
+    snapshot TEXT NOT NULL,
+    task_id TEXT REFERENCES async_tasks(id),
+    status TEXT NOT NULL DEFAULT 'rendering',
+    created_by TEXT NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    UNIQUE(project_id, version_number)
+  );
+  CREATE INDEX IF NOT EXISTS idx_henshin_resources_project ON henshin_resources(project_id);
+  CREATE INDEX IF NOT EXISTS idx_henshin_renderings_project ON henshin_renderings(project_id);
+  CREATE INDEX IF NOT EXISTS idx_async_tasks_project ON async_tasks(project_id);
 
   -- 战斗素材库（内置，只读）
   CREATE TABLE IF NOT EXISTS library_assets (
@@ -136,6 +194,15 @@ db.exec(`
 const categoryColumns = db.prepare('PRAGMA table_info(categories)').all();
 if (!categoryColumns.some((column) => column.name === 'kind')) db.exec("ALTER TABLE categories ADD COLUMN kind TEXT NOT NULL DEFAULT ''");
 
+// 既有数据库的 async_tasks 迁移：异步资源处理需要可查询的进度 / 结果
+{
+  const taskColumns = db.prepare('PRAGMA table_info(async_tasks)').all().map((column) => column.name);
+  if (!taskColumns.includes('progress')) db.exec('ALTER TABLE async_tasks ADD COLUMN progress INTEGER NOT NULL DEFAULT 0');
+  if (!taskColumns.includes('result')) db.exec('ALTER TABLE async_tasks ADD COLUMN result TEXT');
+  if (!taskColumns.includes('error')) db.exec('ALTER TABLE async_tasks ADD COLUMN error TEXT');
+  if (!taskColumns.includes('updated_at')) db.exec("ALTER TABLE async_tasks ADD COLUMN updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
+}
+
 // 素材库以种子数据为准（内置只读，按 id 对齐，SVG 更新后重启即生效）
 {
   const upsertAsset = db.prepare('INSERT INTO library_assets (id, type, name, tags, svg, sort_order) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET type = excluded.type, name = excluded.name, tags = excluded.tags, svg = excluded.svg, sort_order = excluded.sort_order');
@@ -165,5 +232,21 @@ if (count === 0) {
 
 const updateLab = db.prepare('UPDATE categories SET name = ?, kind = ?, description = ?, accent = ?, glyph = ?, sort_order = ? WHERE slug = ?');
 for (const [slug, name, kind, description, accent, glyph, sortOrder] of labs) updateLab.run(name, kind, description, accent, glyph, sortOrder, slug);
+
+// 变身模板以种子定义为准（内置只读，重启即对齐）
+{
+  const upsertTemplate = db.prepare(`INSERT INTO henshin_templates (slug, name, subtitle, description, layout, renderer, accent, definition, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(slug) DO UPDATE SET name = excluded.name, subtitle = excluded.subtitle, description = excluded.description,
+      layout = excluded.layout, renderer = excluded.renderer, accent = excluded.accent, definition = excluded.definition, sort_order = excluded.sort_order`);
+  db.exec('BEGIN');
+  try {
+    HENSHIN_TEMPLATES.forEach((template, index) => {
+      const { slug, name, subtitle, description, layout, renderer, accent } = template;
+      upsertTemplate.run(slug, name, subtitle, description, layout, renderer, accent, JSON.stringify(template), index);
+    });
+    db.exec('COMMIT');
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
+}
 
 export default db;
