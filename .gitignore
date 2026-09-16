@@ -1,6 +1,4 @@
-node_modules
-dist
-.env
-server/data/*.db
-server/data/*.db-*
+node_modules/
+server/data/
+dist/
 .DS_Store
