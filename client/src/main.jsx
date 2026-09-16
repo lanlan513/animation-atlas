@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowUpRight, Check, CircleAlert, Clock3, Cloud, Command, Film, LoaderCircle, Plus, RefreshCw, Save, Sparkles, Upload, UserRound, X } from 'lucide-react';
+import DesignerShell from './designer/DesignerShell.jsx';
 import './styles.css';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
@@ -16,7 +17,12 @@ const labFallback = [
 async function request(path, options = {}) {
   const response = await fetch(`${API}${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || '请求失败，请稍后重试。');
+  if (!response.ok) {
+    const error = new Error(body.error || '请求失败，请稍后重试。');
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
   return body;
 }
 
@@ -32,6 +38,7 @@ function App() {
   const [showCreate, setShowCreate] = useState(false);
   const [createLab, setCreateLab] = useState(null);
   const [showAccount, setShowAccount] = useState(false);
+  const [designerMode, setDesignerMode] = useState(false);
 
   const run = useCallback(async (fn) => { setError(''); try { return await fn(); } catch (err) { setError(err.message); throw err; } }, []);
 
@@ -54,10 +61,16 @@ function App() {
   useEffect(() => { load(); }, [load]);
 
   const chooseProject = useCallback(async (project) => {
-    setSelected(project); setSaveState('idle');
+    setSelected(project); setSaveState('idle'); setDesignerMode(false);
+    if (project.categorySlug === 'sakuga-spark') {
+      setDesignerMode(true);
+      return; // 战斗镜头设计器走自己的 /clip 端点，不加载草稿
+    }
     try { const result = await run(() => request(`/projects/${project.id}`, { headers: { 'x-user-id': user.id } })); setDraft(result.project.draft?.content || { nodes: [], settings: {} }); }
     catch { setDraft({ nodes: [], settings: {} }); }
   }, [run, user]);
+
+  const exitDesigner = useCallback(() => { setDesignerMode(false); setSelected(null); }, []);
 
   const createProject = async ({ name, categorySlug }) => {
     const result = await run(() => request('/projects', { method: 'POST', headers: { 'x-user-id': user.id }, body: JSON.stringify({ name, categorySlug }) }));
@@ -78,6 +91,9 @@ function App() {
 
   if (loadState === 'loading') return <div className="screen-state"><LoaderCircle className="spin" size={26} /><span>正在连接 Atlas…</span></div>;
   if (loadState === 'error') return <div className="screen-state"><CircleAlert size={26} /><span>加载失败</span><button className="button ghost" onClick={load}><RefreshCw size={15} />重试</button></div>;
+  if (designerMode && selected) {
+    return <DesignerShell project={selected} user={user} api={request} onError={setError} onExit={exitDesigner} />;
+  }
   return <div className="app-shell">
     <header className="topbar"><div className="brand"><div className="brand-mark"><Sparkles size={17} /></div><span>ANIMATION ATLAS</span><em>LAB / 01</em></div><div className="top-actions"><span className="system-status"><span className="status-dot" />系统在线</span><button className="icon-button" title="快捷键"><Command size={17} /></button><button className="profile" onClick={() => setShowAccount(true)}><span className="avatar"><UserRound size={15} /></span>{user?.displayName}<span className="chevron">⌄</span></button></div></header>
     <main className="content"><section className="intro"><div><p className="eyebrow">OPEN WORKSPACE / 2026</p><h1>动画实验，<span>从一帧开始。</span></h1><p className="lede">六个专注的实验室入口。把灵感变成可以反复推敲的运动。</p></div><button className="button primary" onClick={() => { setCreateLab(null); setShowCreate(true); }}><Plus size={17} />新建项目</button></section>

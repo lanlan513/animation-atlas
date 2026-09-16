@@ -5,6 +5,7 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import db from './db.js';
+import { getClipByProject, listLibraryAssets, saveClip, ValidationError, VersionConflictError } from './clips.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -112,6 +113,33 @@ app.post('/api/projects/:projectId/versions', requireUser, requireProjectOwner, 
   const version = { id: crypto.randomUUID(), projectId: req.project.id, versionNumber: latest + 1, content: draft?.content || '{}', createdBy: req.user.id };
   db.prepare('INSERT INTO project_versions (id, project_id, version_number, content, created_by) VALUES (?, ?, ?, ?, ?)').run(version.id, version.projectId, version.versionNumber, version.content, version.createdBy);
   res.status(201).json({ version: { id: version.id, versionNumber: version.versionNumber } });
+});
+
+app.get('/api/library/assets', (_req, res) => {
+  res.json({ assets: listLibraryAssets() });
+});
+
+app.get('/api/projects/:projectId/clip', requireUser, requireProjectOwner, (req, res) => {
+  const result = getClipByProject(req.project.id);
+  res.json(result || { clip: null, version: 0 });
+});
+
+app.put('/api/projects/:projectId/clip', requireUser, requireProjectOwner, (req, res) => {
+  try {
+    const result = saveClip(req.project.id, req.body || {});
+    res.json({ saved: true, version: result.version, updatedAt: result.updatedAt, clip: result.clip });
+  } catch (error) {
+    if (error instanceof ValidationError) return res.status(400).json({ error: error.message, errors: error.errors });
+    if (error instanceof VersionConflictError) {
+      return res.status(409).json({
+        error: error.message,
+        code: 'VERSION_CONFLICT',
+        serverVersion: error.serverVersion,
+        serverClip: error.serverClip
+      });
+    }
+    throw error;
+  }
 });
 
 app.post('/api/projects/:projectId/assets', requireUser, requireProjectOwner, upload.single('asset'), (req, res) => {
