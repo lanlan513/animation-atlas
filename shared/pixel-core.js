@@ -345,9 +345,10 @@ export function invertOp(op, modelAfter) {
       return { t: 'frameData', frame: op.frame, data: op.oldData };
 
     case 'frameAdd': {
-      const index = modelAfter.frames.findIndex((f) => f.id === op.frame.id);
-      assert(index >= 0, '新帧不在模型中。');
-      return { t: 'frameDel', frame: op.frame.id, index };
+      const added = getFrame(modelAfter, op.frame.id);
+      assert(added, '新帧不在模型中。');
+      const index = framesInDir(modelAfter, added.dir).findIndex((f) => f.id === op.frame.id);
+      return { t: 'frameDel', frame: op.frame.id, dir: added.dir, index };
     }
 
     case 'frameDel':
@@ -478,10 +479,13 @@ export function buildFrameDupOp(model, sourceFrameId, { id, dir = null, index = 
 }
 
 export function buildFrameDelOp(model, frameId) {
-  const globalIndex = model.frames.findIndex((f) => f.id === frameId);
-  const frame = model.frames[globalIndex];
+  const frame = getFrame(model, frameId);
   assert(frame, '帧不存在。');
-  return { t: 'frameDel', frame: frameId, dir: frame.dir, index: globalIndex, data: frame.data };
+  // index is the position WITHIN the frame's direction group — the inverse
+  // (frameAdd) interprets index with the same semantics, so undo re-inserts
+  // the deleted frame exactly where it came from and frame order is preserved.
+  const index = framesInDir(model, frame.dir).findIndex((f) => f.id === frameId);
+  return { t: 'frameDel', frame: frameId, dir: frame.dir, index, data: frame.data };
 }
 
 export function buildFrameDirOp(model, frameId, newDir) {

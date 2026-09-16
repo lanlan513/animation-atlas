@@ -41,8 +41,12 @@ export default function Editor({ projectId, userId, onExit }) {
       const pending = PixelStore.loadPending(projectId);
       const instance = new PixelStore({ model, version, userId, pending });
       if (pending?.queue?.length) {
-        // Notice surfaces on first tick.
-        instance.notice = `恢复了离线时缓存的 ${pending.queue.length} 个未提交操作，正在尝试同步…`;
+        const count = pending.queue.length;
+        // Matches the real behavior in the constructor: online triggers an
+        // automatic sync immediately; offline keeps the queue until reconnect.
+        instance.notice = navigator.onLine
+          ? `恢复了上次未同步的 ${count} 个操作，正在自动上传…`
+          : `恢复了离线缓存的 ${count} 个操作，网络恢复后将自动上传。`;
       }
       setStore(instance);
       setFrameId(instance.model.frames[0]?.id ?? null);

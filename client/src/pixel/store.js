@@ -54,7 +54,12 @@ export class PixelStore extends EventTarget {
     ], clientNum);
     this.idFactory = makeIdFactory(clientNum, Math.max(maxSeq, this.clientSeq));
 
-    if (pending) this.hydratePending(pending);
+    if (pending && pending.queue?.length) {
+      this.hydratePending(pending);
+      // Reopened project with an unsynced queue from a previous session:
+      // actually upload it (debounced), don't just sit on the bytes.
+      if (this.online) this.scheduleFlush();
+    }
 
     window.addEventListener('online', () => { this.emit({ type: 'sync' }); this.flush(); });
     window.addEventListener('offline', () => { this.setSyncState('offline'); });
@@ -446,7 +451,9 @@ export class PixelStore extends EventTarget {
           this.notify(error.message);
         }
       } finally {
-        this.flushing = null;
+        // A conflict recovery may have started a follow-up flush run; only
+        // clear the guard when no newer run has taken over.
+        if (this.flushing === run) this.flushing = null;
       }
     })();
     this.flushing = run;
@@ -514,8 +521,16 @@ export class PixelStore extends EventTarget {
         this.notify('检测到其他端的更新，已自动合并本地修改（服务器优先）。');
       }
       this.emit({ type: 'all' });
-      if (this.queue.length && this.online) await this.flush();
-      else this.setSyncState(this.queue.length ? 'offline' : 'saved');
+      // Release THIS run's guard before re-entering flush(): the entry guard
+      // `if (this.flushing) return this.flushing` would otherwise hand the
+      // call our own pending promise and deadlock forever, leaving local edits
+      // queued but never uploaded after a conflict recovery.
+      this.flushing = null;
+      if (this.queue.length && this.online) {
+        await this.flush();
+      } else {
+        this.setSyncState(this.queue.length ? 'offline' : 'saved');
+      }
     } catch (error) {
       this.setSyncState('conflict');
       this.notify(`冲突恢复失败：${error.message}。本地修改仍保留在队列中。`);

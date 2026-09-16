@@ -91,6 +91,44 @@ test('frameDir moves between direction groups and keeps global grouping', () => 
   assert.equal(framesInDir(m, 'left')[0].id, id);
 });
 
+test('undoing a frame delete restores exact within-dir position, pixel data and export order', () => {
+  const m = freshProject();
+  const A = m.frames[0];
+  const c1 = m.palette[0].id, c2 = m.palette[1].id, c3 = m.palette[2].id;
+  paint(m, A.id, 0, 0, c1);
+  const B = ids(); applyOp(m, { t: 'frameAdd', frame: { id: B, dir: 'down' } });
+  paint(m, B, 1, 0, c1);
+  const C = ids(); applyOp(m, { t: 'frameAdd', frame: { id: C, dir: 'left' } });
+  paint(m, C, 2, 0, c2);
+  const D = ids(); applyOp(m, { t: 'frameAdd', frame: { id: D, dir: 'left' } });
+  paint(m, D, 3, 0, c3);
+
+  const original = m.frames.map((f) => f.id);
+  assert.deepEqual(original, [A.id, B, C, D]);
+
+  // C is at global index 2 but within-dir ('left') index 0.
+  const delC = buildFrameDelOp(m, C);
+  assert.equal(delC.index, 0, 'delete op carries the WITHIN-DIR index, not the global one');
+  applyOp(m, delC);
+  assert.deepEqual(m.frames.map((f) => f.id), [A.id, B, D]);
+
+  applyOp(m, invertOp(delC, m));
+  assert.deepEqual(m.frames.map((f) => f.id), original, 'C returns between B and D, not after D');
+  const left = framesInDir(m, 'left');
+  assert.deepEqual(left.map((f) => f.id), [C, D], 'left-group order restored');
+  // Pixel content of the restored frame survives the round trip.
+  const px = unpackPixels(m.frames.find((f) => f.id === C).data, 64);
+  assert.equal(px[2], c2, 'restored frame keeps its pixels (export order + content)');
+
+  // Deleting and undoing the second frame of a multi-frame group as well.
+  const delD = buildFrameDelOp(m, D);
+  assert.equal(delD.index, 1, 'D within-dir index is 1');
+  assert.equal(delD.index, 1, 'D within-dir index is 1');
+  applyOp(m, delD);
+  applyOp(m, invertOp(delD, m));
+  assert.deepEqual(m.frames.map((f) => f.id), original);
+});
+
 console.log('palette cascade');
 test('deleting a color clears it from every frame and op captures replacements', () => {
   const m = freshProject();
